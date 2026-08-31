@@ -1,0 +1,209 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum ReportType {
+  LOST
+  FOUND
+}
+
+enum ReportStatus {
+  LOST
+  FOUND
+  POSSIBLE_MATCH
+  UNDER_VERIFICATION
+  CLAIMED
+  RETURNED
+  CLOSED
+}
+
+enum MatchStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  EXPIRED
+}
+
+enum ClaimStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  UNDER_HANDOVER
+}
+
+enum NotificationType {
+  MATCH_FOUND
+  CLAIM_SUBMITTED
+  CLAIM_APPROVED
+  CLAIM_REJECTED
+  ITEM_RETURNED
+  REPORT_UPDATED
+  SYSTEM
+}
+
+model User {
+  id           String    @id @default(uuid())
+  name         String
+  email        String    @unique
+  phone        String?
+  passwordHash String
+  role         UserRole  @default(USER)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  reports      Report[]
+  claims       Claim[]
+  notifications Notification[]
+  auditLogs    AuditLog[]
+
+  @@index([email])
+}
+
+model Item {
+  id             String   @id @default(uuid())
+  title          String
+  category       String
+  description    String
+  imageUrl         String?
+  privateDetails   String?
+  currentLocation  String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  reports        Report[]
+}
+
+model Report {
+  id        String       @id @default(uuid())
+  userId    String
+  itemId    String
+  type      ReportType
+  location  String
+  eventId   String?
+  dateTime       DateTime
+  status         ReportStatus @default(LOST)
+  isFlagged      Boolean      @default(false)
+  flaggedReason  String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  item      Item         @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  event     Event?       @relation(fields: [eventId], references: [id])
+  
+  lostMatches  Match[] @relation("LostReport")
+  foundMatches Match[] @relation("FoundReport")
+  claims       Claim[]
+
+  @@index([userId])
+  @@index([itemId])
+  @@index([type])
+  @@index([status])
+  @@index([eventId])
+}
+
+model Match {
+  id            String      @id @default(uuid())
+  lostReportId  String
+  foundReportId String
+  score         Int
+  status        MatchStatus @default(PENDING)
+  createdAt     DateTime    @default(now())
+
+  lostReport  Report @relation("LostReport", fields: [lostReportId], references: [id], onDelete: Cascade)
+  foundReport Report @relation("FoundReport", fields: [foundReportId], references: [id], onDelete: Cascade)
+  claims      Claim[]
+
+  @@index([lostReportId])
+  @@index([foundReportId])
+  @@index([score])
+}
+
+model Claim {
+  id                  String      @id @default(uuid())
+  matchId             String
+  claimantId          String
+  reportId            String
+  verificationDetails String
+  status              ClaimStatus @default(PENDING)
+  adminNotes          String?
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+
+  match    Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  claimant User  @relation(fields: [claimantId], references: [id], onDelete: Cascade)
+  report   Report @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@index([matchId])
+  @@index([claimantId])
+  @@index([reportId])
+  @@index([status])
+}
+
+model Notification {
+  id        String           @id @default(uuid())
+  userId    String
+  message   String
+  type      NotificationType
+  isRead    Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([isRead])
+}
+
+model Event {
+  id          String   @id @default(uuid())
+  name        String
+  venue       String
+  location    String
+  startDate   DateTime
+  endDate     DateTime
+  active      Boolean  @default(true)
+  qrCode      String?
+  createdAt   DateTime @default(now())
+
+  reports Report[]
+
+  @@index([active])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String
+  action     String
+  entityType String
+  entityId   String
+  details    String?
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([entityType])
+  @@index([entityId])
+}
+
+model Category {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+}
+
+model Location {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+}
