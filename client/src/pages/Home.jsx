@@ -1,68 +1,80 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Search, MapPin, Shield, Clock, CheckCircle, Users, ArrowRight, Zap } from 'lucide-react';
-import api from '../utils/api';
+
+const HERO_PHRASES = ['Lost something?', 'Found something?', 'LeftBehind can help.'];
 
 const Home = () => {
-  const [stats, setStats] = useState({ users: 0, reports: 0, matches: 0, returned: 0 });
+  const [phraseIndex, setPhraseIndex] = useState(0);
 
   useEffect(() => {
-    const fetchStats = async () => {
-      try {
-        const [reportsRes, categoriesRes] = await Promise.all([
-          api.get('/reports'),
-          api.get('/categories')
-        ]);
-        const reports = reportsRes.data;
-        const matched = reports.filter(r => r.status === 'POSSIBLE_MATCH').length;
-        const returned = reports.filter(r => r.status === 'RETURNED').length;
-        setStats({ reports: reports.length, matches: matched, returned });
-      } catch (e) {
-        // Use defaults
-      }
-    };
-    fetchStats();
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (prefersReducedMotion) return;
+
+    const interval = setInterval(() => {
+      setPhraseIndex(prev => (prev + 1) % HERO_PHRASES.length);
+    }, 2600);
+
+    return () => clearInterval(interval);
   }, []);
+
   return (
     <div className="min-h-screen">
       {/* Hero Section */}
-      <section className="py-24">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <section className="relative overflow-hidden py-28 md:py-36">
+        {/* Soft background glow */}
+        <div aria-hidden="true" className="absolute inset-0 pointer-events-none">
+          <div className="absolute left-1/2 top-16 -translate-x-1/2 w-[42rem] h-[42rem] rounded-full bg-sky-500/10 blur-3xl"></div>
+          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-72 h-72 rounded-full bg-purple-500/10 blur-2xl"></div>
+        </div>
+
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center">
-            <h1 className="text-4xl md:text-6xl font-bold mb-6 text-white tracking-tight">
-              Lost Something? Found Something?
-            </h1>
-            <p className="text-xl md:text-2xl mb-4 text-sky-300">
-              Let's Return It.
+            <p className="inline-flex items-center text-sm font-medium uppercase tracking-widest text-sky-300/80 border border-sky-400/20 rounded-full px-4 py-1.5 mb-8 bg-sky-500/5">
+              <Zap className="h-4 w-4 mr-2" />
+              Smart Lost &amp; Found Platform
             </p>
-            <p className="text-lg mb-12 text-gray-400 max-w-2xl mx-auto">
-              One simple platform to report, find, match and safely return lost belongings.
+
+            <h1 className="hero-rotator min-h-[1.2em] text-5xl sm:text-6xl md:text-7xl font-extrabold mb-8 tracking-tight">
+              <span
+                aria-live="polite"
+                key={phraseIndex}
+                className="hero-phrase block text-transparent bg-clip-text bg-gradient-to-r from-sky-300 via-white to-sky-300"
+              >
+                {HERO_PHRASES[phraseIndex]}
+              </span>
+            </h1>
+
+            <p className="text-lg md:text-xl mb-12 text-gray-400 max-w-2xl mx-auto">
+              Lost something? Found something? LeftBehind helps you find the right item and
+              reconnect it with its rightful owner.
             </p>
 
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Link
                 to="/report/lost"
-                className="px-8 py-4 bg-sky-500/20 text-sky-300 rounded-lg font-semibold hover:bg-sky-500/30 border border-sky-400/30 transition-all flex items-center justify-center backdrop-blur-sm"
+                className="hero-btn-primary group px-8 py-4 bg-gradient-to-r from-sky-500 to-sky-400 text-slate-900 rounded-lg font-semibold flex items-center justify-center shadow-lg shadow-sky-500/30 hover:shadow-sky-500/50"
               >
-                I Lost Something
-                <ArrowRight className="ml-2 h-5 w-5" />
+                Report Lost Item
+                <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
               </Link>
               <Link
                 to="/report/found"
-                className="px-8 py-4 bg-white/10 text-white rounded-lg font-semibold hover:bg-white/15 border border-white/15 transition-all flex items-center justify-center backdrop-blur-sm"
+                className="hero-btn-secondary px-8 py-4 bg-white/10 text-white rounded-lg font-semibold border border-white/15 flex items-center justify-center backdrop-blur-sm"
               >
-                I Found Something
-                <ArrowRight className="ml-2 h-5 w-5" />
+                Report Found Item
+                <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
               </Link>
             </div>
 
             <div className="mt-8">
               <Link
                 to="/search"
-                className="inline-flex items-center text-gray-400 hover:text-sky-300 transition-colors"
+                className="group inline-flex items-center text-gray-400 hover:text-sky-300 transition-colors"
               >
-                <Search className="h-5 w-5 mr-2" />
+                <Search className="h-5 w-5 mr-2 group-hover:-rotate-12 transition-transform" />
                 Search Items
+                <ArrowRight className="h-4 w-4 ml-2 group-hover:translate-x-1 transition-transform" />
               </Link>
             </div>
           </div>
@@ -115,26 +127,6 @@ const Home = () => {
                 <feature.icon className="h-8 w-8 text-sky-400 mb-4" />
                 <h3 className="text-xl font-semibold mb-2 text-white">{feature.title}</h3>
                 <p className="text-gray-400">{feature.description}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Stats Section */}
-      <section className="py-16">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-            {[
-              { label: 'Items Reported', value: stats.reports, icon: Search },
-              { label: 'Smart Matches', value: stats.matches, icon: Zap },
-              { label: 'Items Returned', value: stats.returned, icon: CheckCircle },
-              { label: 'Categories', value: 9, icon: Shield }
-            ].map((stat, i) => (
-              <div key={i} className="bg-white/5 backdrop-blur-sm p-6 rounded-lg border border-white/10 text-center">
-                <stat.icon className="h-8 w-8 text-sky-400 mx-auto mb-3" />
-                <p className="text-3xl font-bold text-white">{stat.value}+</p>
-                <p className="text-sm text-gray-400 mt-1">{stat.label}</p>
               </div>
             ))}
           </div>

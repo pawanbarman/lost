@@ -51,3 +51,68 @@ select option {
   background-color: #020617;
   color: #e2e8f0;
 }
+
+/* ===== Hero animated phrase ===== */
+.hero-rotator {
+  min-height: 1.2em;
+}
+
+.hero-phrase {
+  display: block;
+  animation: heroPhraseEnter 0.9s cubic-bezier(0.16, 1, 0.3, 1) both;
+  filter: drop-shadow(0 0 24px rgba(56, 189, 248, 0.35));
+}
+
+@keyframes heroPhraseEnter {
+  0% {
+    opacity: 0;
+    transform: translateY(26px) scale(0.96);
+  }
+  60% {
+    opacity: 1;
+    transform: translateY(0) scale(1.02);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* ===== Hero CTA buttons ===== */
+.hero-btn-primary {
+  transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
+}
+.hero-btn-primary:hover {
+  transform: translateY(-2px) scale(1.02);
+  filter: brightness(1.08);
+}
+.hero-btn-primary:focus-visible {
+  outline: 2px solid #38bdf8;
+  outline-offset: 3px;
+}
+
+.hero-btn-secondary {
+  transition: transform 0.2s ease, background-color 0.2s ease, border-color 0.2s ease;
+}
+.hero-btn-secondary:hover {
+  transform: translateY(-2px) scale(1.02);
+  background-color: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+.hero-btn-secondary:focus-visible {
+  outline: 2px solid #38bdf8;
+  outline-offset: 3px;
+}
+
+/* ===== Reduced motion ===== */
+@media (prefers-reduced-motion: reduce) {
+  .hero-phrase {
+    animation: none;
+    filter: none;
+  }
+  .hero-btn-primary:hover,
+  .hero-btn-secondary:hover {
+    transform: none;
+  }
+}
+
