@@ -8,8 +8,15 @@ export const reportSchema = z.object({
   location: z.string().min(2, 'Location is required'),
   dateTime: z.string().or(z.date()),
   eventId: z.string().optional(),
+  communityId: z.string().optional(),
   privateDetails: z.string().optional(),
-  currentLocation: z.string().optional()
+  currentLocation: z.string().optional(),
+  color: z.string().optional(),
+  brand: z.string().optional(),
+  model: z.string().optional(),
+  uniqueFeatures: z.string().optional(),
+  condition: z.string().optional(),
+  size: z.string().optional()
 });
 
 export const updateReportSchema = z.object({
@@ -18,6 +25,13 @@ export const updateReportSchema = z.object({
   description: z.string().min(10).optional(),
   location: z.string().min(2).optional(),
   dateTime: z.string().or(z.date()).optional(),
+  communityId: z.string().optional(),
   privateDetails: z.string().optional(),
-  currentLocation: z.string().optional()
+  currentLocation: z.string().optional(),
+  color: z.string().optional(),
+  brand: z.string().optional(),
+  model: z.string().optional(),
+  uniqueFeatures: z.string().optional(),
+  condition: z.string().optional(),
+  size: z.string().optional()
 });

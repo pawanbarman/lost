@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import api from '../utils/api';
-import { FileText, CheckCircle, XCircle, Clock } from 'lucide-react';
+import { FileText, CheckCircle, XCircle, Clock, RefreshCcw, PackageCheck } from 'lucide-react';
 
 const AdminClaims = () => {
   const { isAuthenticated, isAdmin } = useAuth();
@@ -44,12 +44,22 @@ const AdminClaims = () => {
     }
   };
 
+  const updateHandover = async (claimId, action) => {
+    try {
+      await api.put(`/claims/${claimId}/handover`, { action });
+      fetchClaims();
+    } catch (error) {
+      console.error('Failed to update handover');
+    }
+  };
+
   const getStatusColor = (status) => {
     const colors = {
       PENDING: 'bg-yellow-500/20 text-yellow-400',
       APPROVED: 'bg-green-500/20 text-green-400',
       REJECTED: 'bg-red-500/20 text-red-400',
-      UNDER_HANDOVER: 'bg-sky-500/20 text-sky-400'
+      UNDER_HANDOVER: 'bg-sky-500/20 text-sky-400',
+      COMPLETED: 'bg-emerald-500/20 text-emerald-400'
     };
     return colors[status] || 'bg-gray-500/20 text-gray-400';
   };
@@ -151,11 +161,27 @@ const AdminClaims = () => {
                   )}
                   {claim.status === 'APPROVED' && (
                     <button
-                      onClick={() => updateClaimStatus(claim.id, 'UNDER_HANDOVER')}
-                      className="px-4 py-2 bg-sky-500/20 text-sky-300 rounded-md hover:bg-sky-500/30 border border-sky-400/30"
+                      onClick={() => updateHandover(claim.id, 'START')}
+                      className="px-4 py-2 bg-sky-500/20 text-sky-300 rounded-md hover:bg-sky-500/30 border border-sky-400/30 flex items-center justify-center"
                     >
-                      Mark as Handover
+                      <RefreshCcw className="h-4 w-4 mr-2" />
+                      Start Handover
                     </button>
+                  )}
+                  {claim.status === 'UNDER_HANDOVER' && (
+                    <button
+                      onClick={() => updateHandover(claim.id, 'COMPLETE')}
+                      className="px-4 py-2 bg-emerald-500/20 text-emerald-300 rounded-md hover:bg-emerald-500/30 border border-emerald-400/30 flex items-center justify-center"
+                    >
+                      <PackageCheck className="h-4 w-4 mr-2" />
+                      Confirm Handover
+                    </button>
+                  )}
+                  {claim.status === 'COMPLETED' && (
+                    <span className="px-4 py-2 bg-emerald-500/20 text-emerald-300 rounded-md border border-emerald-400/30 text-center text-sm">
+                      <PackageCheck className="h-4 w-4 inline mr-1" />
+                      Recovered
+                    </span>
                   )}
                 </div>
               </div>

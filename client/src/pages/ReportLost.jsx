@@ -14,7 +14,14 @@ const ReportLost = () => {
     location: '',
     dateTime: '',
     eventId: '',
-    privateDetails: ''
+    communityId: '',
+    privateDetails: '',
+    color: '',
+    brand: '',
+    model: '',
+    condition: '',
+    size: '',
+    uniqueFeatures: ''
   });
   const [image, setImage] = useState(null);
   const [preview, setPreview] = useState(null);
@@ -22,6 +29,7 @@ const ReportLost = () => {
   const [loading, setLoading] = useState(false);
   const [events, setEvents] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [communities, setCommunities] = useState([]);
 
   React.useEffect(() => {
     if (!isAuthenticated) {
@@ -31,7 +39,17 @@ const ReportLost = () => {
 
     fetchEvents();
     fetchCategories();
+    fetchCommunities();
   }, [isAuthenticated, navigate]);
+
+  const fetchCommunities = async () => {
+    try {
+      const response = await api.get('/communities');
+      setCommunities(response.data);
+    } catch (error) {
+      console.error('Failed to fetch communities');
+    }
+  };
 
   const fetchEvents = async () => {
     try {
@@ -79,7 +97,14 @@ const ReportLost = () => {
     data.append('location', formData.location);
     data.append('dateTime', formData.dateTime);
     if (formData.eventId) data.append('eventId', formData.eventId);
+    if (formData.communityId) data.append('communityId', formData.communityId);
     if (formData.privateDetails) data.append('privateDetails', formData.privateDetails);
+    if (formData.color) data.append('color', formData.color);
+    if (formData.brand) data.append('brand', formData.brand);
+    if (formData.model) data.append('model', formData.model);
+    if (formData.condition) data.append('condition', formData.condition);
+    if (formData.size) data.append('size', formData.size);
+    if (formData.uniqueFeatures) data.append('uniqueFeatures', formData.uniqueFeatures);
     if (image) data.append('image', image);
 
     try {
@@ -208,6 +233,81 @@ const ReportLost = () => {
           </div>
         </div>
 
+        {/* Physical Attributes */}
+        <div className="bg-white/5 backdrop-blur-sm border border-white/10 p-6 rounded-lg space-y-4">
+          <h2 className="text-sm font-medium text-white">Physical Attributes (Optional)</h2>
+          <div className="grid md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Color</label>
+              <input
+                type="text"
+                name="color"
+                value={formData.color}
+                onChange={handleChange}
+                className="w-full px-3 py-2 rounded-md focus:ring-sky-500 focus:border-sky-500"
+                placeholder="e.g., Black"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Brand</label>
+              <input
+                type="text"
+                name="brand"
+                value={formData.brand}
+                onChange={handleChange}
+                className="w-full px-3 py-2 rounded-md focus:ring-sky-500 focus:border-sky-500"
+                placeholder="e.g., Nike"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Model</label>
+              <input
+                type="text"
+                name="model"
+                value={formData.model}
+                onChange={handleChange}
+                className="w-full px-3 py-2 rounded-md focus:ring-sky-500 focus:border-sky-500"
+                placeholder="e.g., iPhone 15 Pro"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Condition</label>
+              <input
+                type="text"
+                name="condition"
+                value={formData.condition}
+                onChange={handleChange}
+                className="w-full px-3 py-2 rounded-md focus:ring-sky-500 focus:border-sky-500"
+                placeholder="e.g., Used, New"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Size</label>
+              <input
+                type="text"
+                name="size"
+                value={formData.size}
+                onChange={handleChange}
+                className="w-full px-3 py-2 rounded-md focus:ring-sky-500 focus:border-sky-500"
+                placeholder="e.g., M, 42, 15-inch"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-1">
+              Unique Features
+            </label>
+            <textarea
+              name="uniqueFeatures"
+              value={formData.uniqueFeatures}
+              onChange={handleChange}
+              rows={2}
+              className="w-full px-3 py-2 rounded-md focus:ring-sky-500 focus:border-sky-500"
+              placeholder="e.g., Red keychain on zipper, small tear on left strap"
+            />
+          </div>
+        </div>
+
         {/* Location and Time */}
         <div className="bg-white/5 backdrop-blur-sm border border-white/10 p-6 rounded-lg space-y-4">
           <div className="grid md:grid-cols-2 gap-4">
@@ -257,6 +357,25 @@ const ReportLost = () => {
               {events.map((event) => (
                 <option key={event.id} value={event.id}>
                   {event.name} - {event.venue}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-1">
+              Community (Optional)
+            </label>
+            <select
+              name="communityId"
+              value={formData.communityId}
+              onChange={handleChange}
+              className="w-full px-3 py-2 rounded-md focus:ring-sky-500 focus:border-sky-500"
+            >
+              <option value="">Select a community (optional)</option>
+              {communities.map((community) => (
+                <option key={community.id} value={community.id}>
+                  {community.name}
                 </option>
               ))}
             </select>

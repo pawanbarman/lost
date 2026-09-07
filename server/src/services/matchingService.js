@@ -1,14 +1,15 @@
 import prisma from '../config/database.js';
+import { findEligibleCandidates, rankMatches } from './matching/aiMatchingService.js';
+import { compareFeatureVectors } from './matching/ruleBasedMatcher.js';
+import { extractFeatureVector } from './matching/featureExtractor.js';
 
-const WEIGHTS = {
+export const MATCH_WEIGHTS = {
   category: 25,
   keywords: 25,
   description: 20,
   location: 20,
   dateTime: 10
 };
-
-export const MATCH_WEIGHTS = WEIGHTS;
 
 export function calculateSimilarity(str1, str2) {
   if (!str1 || !str2) return 0;
@@ -84,12 +85,34 @@ export function calculateScoreBreakdown(report, oppositeReport) {
 
 export function calculateTotalScore(breakdown) {
   return Math.round(
-    (breakdown.category * WEIGHTS.category +
-     breakdown.keywords * WEIGHTS.keywords +
-     breakdown.description * WEIGHTS.description +
-     breakdown.location * WEIGHTS.location +
-     breakdown.dateTime * WEIGHTS.dateTime) / 100
+    (breakdown.category * MATCH_WEIGHTS.category +
+     breakdown.keywords * MATCH_WEIGHTS.keywords +
+     breakdown.description * MATCH_WEIGHTS.description +
+     breakdown.location * MATCH_WEIGHTS.location +
+     breakdown.dateTime * MATCH_WEIGHTS.dateTime) / 100
   );
+}
+
+const PERSISTENCE_THRESHOLD = 0.6;
+
+function enrichWithEvidence(match) {
+  const lostFeatures = match.lostReport ? extractFeatureVector(match.lostReport) : {};
+  const foundFeatures = match.foundReport ? extractFeatureVector(match.foundReport) : {};
+
+  const result = compareFeatureVectors(lostFeatures, foundFeatures, {});
+
+  match.evidence = result.evidence;
+  match.summary = result.summary;
+  match.confidence = result.confidence || match.confidence;
+
+  if (match.lostReport?.item?.privateDetails) {
+    delete match.lostReport.item.privateDetails;
+  }
+  if (match.foundReport?.item?.privateDetails) {
+    delete match.foundReport.item.privateDetails;
+  }
+
+  return match;
 }
 
 export const matchingService = {
@@ -101,77 +124,60 @@ export const matchingService = {
 
     if (!report) return [];
 
-    const oppositeType = report.type === 'LOST' ? 'FOUND' : 'LOST';
-    
-    const oppositeReports = await prisma.report.findMany({
-      where: {
-        type: oppositeType,
-        status: { in: ['LOST', 'FOUND', 'POSSIBLE_MATCH'] }
-      },
-      include: { item: true }
-    });
+    const candidates = await findEligibleCandidates(report);
+    const ranked = rankMatches(report, candidates);
 
     const matches = [];
 
-    for (const oppositeReport of oppositeReports) {
-      if (oppositeReport.userId === report.userId) continue;
+    for (const candidate of ranked.matches) {
+      if (candidate.score < PERSISTENCE_THRESHOLD) continue;
 
-      const { total: totalScore, breakdown } = calculateScoreBreakdown(report, oppositeReport);
-
-      if (totalScore >= 60) {
-        matches.push({
-          lostReportId: report.type === 'LOST' ? report.id : oppositeReport.id,
-          foundReportId: report.type === 'FOUND' ? report.id : oppositeReport.id,
-          score: totalScore,
-          breakdown
-        });
-      }
-    }
-
-    matches.sort((a, b) => b.score - a.score);
-
-    for (const match of matches) {
       const existingMatch = await prisma.match.findFirst({
         where: {
-          lostReportId: match.lostReportId,
-          foundReportId: match.foundReportId
+          lostReportId: candidate.lostReportId,
+          foundReportId: candidate.foundReportId
         }
       });
 
-      if (!existingMatch) {
-        const created = await prisma.match.create({
-          data: {
-            lostReportId: match.lostReportId,
-            foundReportId: match.foundReportId,
-            score: match.score
-          }
-        });
+      if (existingMatch) continue;
 
-        await prisma.report.update({
-          where: { id: match.lostReportId },
-          data: { status: 'POSSIBLE_MATCH' }
-        });
+      const score = Math.round(candidate.score * 100);
 
-        await prisma.report.update({
-          where: { id: match.foundReportId },
-          data: { status: 'POSSIBLE_MATCH' }
-        });
-
-        const lostReportOwner = await prisma.report.findUnique({
-          where: { id: match.lostReportId },
-          select: { userId: true }
-        });
-
-        if (lostReportOwner) {
-          await prisma.notification.create({
-            data: {
-              userId: lostReportOwner.userId,
-              message: `We found a possible match for your lost item (Score: ${match.score}%)`,
-              type: 'MATCH_FOUND'
-            }
-          });
+      const created = await prisma.match.create({
+        data: {
+          lostReportId: candidate.lostReportId,
+          foundReportId: candidate.foundReportId,
+          score
         }
-      }
+      });
+
+      await prisma.report.update({
+        where: { id: candidate.lostReportId },
+        data: { status: 'POSSIBLE_MATCH' }
+      });
+
+      await prisma.report.update({
+        where: { id: candidate.foundReportId },
+        data: { status: 'POSSIBLE_MATCH' }
+      });
+
+      await prisma.notification.create({
+        data: {
+          userId: candidate.lostReportOwnerId,
+          message: `We found a possible match for your lost item (Score: ${score}%)`,
+          type: 'MATCH_FOUND'
+        }
+      });
+
+      matches.push({
+        id: created.id,
+        lostReportId: candidate.lostReportId,
+        foundReportId: candidate.foundReportId,
+        score,
+        confidence: candidate.confidence,
+        evidence: candidate.evidence,
+        summary: candidate.summary
+      });
     }
 
     return matches;
@@ -209,6 +215,6 @@ export const matchingService = {
       orderBy: { score: 'desc' }
     });
 
-    return matches;
+    return matches.map(enrichWithEvidence);
   }
 };

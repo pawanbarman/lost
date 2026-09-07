@@ -8,6 +8,7 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import Search from './pages/Search';
+import FoundFeed from './pages/FoundFeed';
 import ReportLost from './pages/ReportLost';
 import ReportFound from './pages/ReportFound';
 import MyReports from './pages/MyReports';
@@ -42,6 +43,7 @@ function App() {
             <Route path="/register" element={<Register />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/search" element={<Search />} />
+            <Route path="/found-feed" element={<FoundFeed />} />
             <Route path="/report/lost" element={<ReportLost />} />
             <Route path="/report/found" element={<ReportFound />} />
             <Route path="/my-reports" element={<MyReports />} />

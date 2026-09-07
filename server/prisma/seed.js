@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 
@@ -20,28 +21,47 @@ async function main() {
   console.log('Created admin user:', admin.email);
 
   const user1Password = await bcrypt.hash('user123', 10);
+  const user2Password = await bcrypt.hash('user123', 10);
+
+  const communities = [
+    { code: 'campus', name: 'University Campus', description: 'Colleges, libraries and student facilities' },
+    { code: 'office', name: 'TechCorp Office', description: 'Company building and office blocks' },
+    { code: 'city', name: 'City Fest 2026', description: 'Public event venues and festival grounds' }
+  ];
+  const communityIds = {};
+  for (const c of communities) {
+    const community = await prisma.community.upsert({
+      where: { code: c.code },
+      update: { name: c.name, description: c.description },
+      create: c
+    });
+    communityIds[c.code] = community.id;
+  }
+  console.log('Created demo communities');
+
   const user1 = await prisma.user.upsert({
     where: { email: 'john@example.com' },
-    update: {},
+    update: { communityId: communityIds.campus },
     create: {
       name: 'John Doe',
       email: 'john@example.com',
       phone: '+1234567890',
       passwordHash: user1Password,
-      role: 'USER'
+      role: 'USER',
+      communityId: communityIds.campus
     }
   });
 
-  const user2Password = await bcrypt.hash('user123', 10);
   const user2 = await prisma.user.upsert({
     where: { email: 'jane@example.com' },
-    update: {},
+    update: { communityId: communityIds.campus },
     create: {
       name: 'Jane Smith',
       email: 'jane@example.com',
       phone: '+0987654321',
       passwordHash: user2Password,
-      role: 'USER'
+      role: 'USER',
+      communityId: communityIds.campus
     }
   });
   console.log('Created demo users');
@@ -82,6 +102,9 @@ async function main() {
         category: 'Wallets',
         description: 'Black leather wallet with brand logo. Contains debit cards, ID card, and some cash. Has a small scratch on the back.',
         privateDetails: 'Blue sticker inside the flap, contains a library card with number LIB-2024-8831, emergency contact photo taped inside',
+        color: 'Black',
+        condition: 'Good',
+        uniqueFeatures: 'Small scratch on the back',
         imageUrl: null
       }
     });
@@ -94,6 +117,7 @@ async function main() {
         location: 'Library, 2nd floor',
         dateTime: new Date('2026-03-10T14:30:00'),
         eventId: event.id,
+        communityId: communityIds.campus,
         status: 'LOST'
       }
     });
@@ -104,6 +128,9 @@ async function main() {
         category: 'Wallets',
         description: 'Found black leather wallet near the library entrance. Contains cards and cash.',
         currentLocation: 'Security Desk, Main Gate',
+        color: 'Black',
+        condition: 'Good',
+        uniqueFeatures: 'Small scratch on the back',
         imageUrl: null
       }
     });
@@ -116,6 +143,7 @@ async function main() {
         location: 'Library entrance',
         dateTime: new Date('2026-03-10T15:00:00'),
         eventId: event.id,
+        communityId: communityIds.campus,
         status: 'FOUND'
       }
     });
@@ -138,6 +166,11 @@ async function main() {
         category: 'Electronics',
         description: 'Space gray iPhone 15 Pro with a blue case. Screen has a tempered glass protector.',
         privateDetails: 'Wallpaper is a sunset photo from Manali trip, has a crack near the top left corner, phone case has initials "JD" engraved',
+        color: 'Space Gray',
+        brand: 'Apple',
+        model: 'iPhone 15 Pro',
+        condition: 'Used',
+        uniqueFeatures: 'Crack near top left corner, blue case, tempered glass screen protector',
         imageUrl: null
       }
     });
@@ -149,6 +182,7 @@ async function main() {
         type: 'LOST',
         location: 'Cafeteria',
         dateTime: new Date('2026-03-11T12:00:00'),
+        communityId: communityIds.campus,
         status: 'LOST'
       }
     });
@@ -159,6 +193,8 @@ async function main() {
         category: 'Keys',
         description: 'Toyota car keys with a keychain that has a small teddy bear attached.',
         currentLocation: 'Lost & Found Office, Admin Building',
+        brand: 'Toyota',
+        uniqueFeatures: 'Keychain with a small teddy bear',
         imageUrl: null
       }
     });
@@ -170,6 +206,7 @@ async function main() {
         type: 'FOUND',
         location: 'Parking lot',
         dateTime: new Date('2026-03-11T16:00:00'),
+        communityId: communityIds.campus,
         status: 'FOUND'
       }
     });
@@ -180,6 +217,9 @@ async function main() {
         category: 'Bags',
         description: 'Navy blue Jansport backpack with laptop compartment. Contains textbooks and a water bottle.',
         privateDetails: 'Has a "CS Club" pin on the front strap, laptop sleeve has a sticker of a cat, side pocket has a broken zipper',
+        color: 'Navy Blue',
+        brand: 'Jansport',
+        uniqueFeatures: '"CS Club" pin on front strap, cat sticker in laptop sleeve, broken zipper on side pocket',
         imageUrl: null
       }
     });
@@ -191,15 +231,34 @@ async function main() {
         type: 'LOST',
         location: 'CS Building, Room 301',
         dateTime: new Date('2026-03-12T10:30:00'),
+        communityId: communityIds.campus,
         status: 'LOST'
       }
     });
 
-    await prisma.notification.create({
+    const nikeFound = await prisma.item.create({
       data: {
-        userId: user1.id,
-        message: 'Possible match found for your lost Black Leather Wallet (Score: 85%)',
-        type: 'MATCH_FOUND'
+        title: 'Black Nike Backpack',
+        category: 'Bags',
+        description: 'Black Nike backpack with a red keychain attached to the zipper. Small tear on the left strap.',
+        currentLocation: 'Security Desk, New Library Building',
+        color: 'Black',
+        brand: 'Nike',
+        uniqueFeatures: 'Red keychain attached to zipper, small tear on left strap',
+        condition: 'Used',
+        imageUrl: null
+      }
+    });
+
+    const nikeFoundReport = await prisma.report.create({
+      data: {
+        userId: user2.id,
+        itemId: nikeFound.id,
+        type: 'FOUND',
+        location: 'Library, 2nd floor',
+        dateTime: new Date('2026-03-12T09:15:00'),
+        communityId: communityIds.campus,
+        status: 'FOUND'
       }
     });
 

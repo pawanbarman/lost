@@ -2,13 +2,23 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../utils/api';
-import { FileText, CheckCircle, XCircle, Clock } from 'lucide-react';
+import { FileText, CheckCircle, XCircle, Clock, PackageCheck, MapPin, RefreshCcw } from 'lucide-react';
+
+const STATUS_MESSAGES = {
+  PENDING: 'Your claim is awaiting admin review.',
+  APPROVED: 'Your claim was approved. The item is ready for handover - you can start the handover below.',
+  REJECTED: 'Your claim was rejected. If you have more proof, please contact support.',
+  UNDER_HANDOVER: 'Handover in progress. Confirm once you have received the item.',
+  COMPLETED: 'Handover complete. This item has been successfully recovered.'
+};
 
 const Claims = () => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const navigate = useNavigate();
   const [claims, setClaims] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [actingClaimId, setActingClaimId] = useState(null);
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -26,12 +36,26 @@ const Claims = () => {
     }
   };
 
+  const handleHandover = async (claimId, action) => {
+    setError('');
+    setActingClaimId(claimId);
+    try {
+      await api.put(`/claims/${claimId}/handover`, { action });
+      await fetchClaims();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to update handover. Please try again.');
+    } finally {
+      setActingClaimId(null);
+    }
+  };
+
   const getStatusColor = (status) => {
     const colors = {
       PENDING: 'bg-yellow-500/20 text-yellow-400',
       APPROVED: 'bg-green-500/20 text-green-400',
       REJECTED: 'bg-red-500/20 text-red-400',
-      UNDER_HANDOVER: 'bg-sky-500/20 text-sky-400'
+      UNDER_HANDOVER: 'bg-sky-500/20 text-sky-400',
+      COMPLETED: 'bg-emerald-500/20 text-emerald-400'
     };
     return colors[status] || 'bg-gray-500/20 text-gray-400';
   };
@@ -41,10 +65,13 @@ const Claims = () => {
       PENDING: Clock,
       APPROVED: CheckCircle,
       REJECTED: XCircle,
-      UNDER_HANDOVER: FileText
+      UNDER_HANDOVER: RefreshCcw,
+      COMPLETED: PackageCheck
     };
     return icons[status] || FileText;
   };
+
+  const canManageHandover = (claim) => claim.claimantId === user?.id || user?.role === 'ADMIN';
 
   if (!isAuthenticated) {
     return (
@@ -70,9 +97,15 @@ const Claims = () => {
           My Claims
         </h1>
         <p className="mt-2 text-gray-400">
-          Track your ownership claims
+          Track your ownership claims and handovers
         </p>
       </div>
+
+      {error && (
+        <div className="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-3 rounded-lg mb-6">
+          {error}
+        </div>
+      )}
 
       {claims.length === 0 ? (
         <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-lg p-12 text-center">
@@ -86,6 +119,7 @@ const Claims = () => {
         <div className="space-y-4">
           {claims.map((claim) => {
             const StatusIcon = getStatusIcon(claim.status);
+            const pickupLocation = claim.match?.foundReport?.item?.currentLocation;
             return (
               <div key={claim.id} className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-lg p-6">
                 <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
@@ -100,6 +134,8 @@ const Claims = () => {
                       </span>
                     </div>
 
+                    <p className="text-sm text-gray-300 mb-4">{STATUS_MESSAGES[claim.status]}</p>
+
                     <div className="grid md:grid-cols-2 gap-4 mb-4">
                       <div className="bg-red-500/10 p-4 rounded-lg border border-red-500/20">
                         <h4 className="font-semibold text-red-400 mb-2">Lost Item</h4>
@@ -113,16 +149,30 @@ const Claims = () => {
                       </div>
                     </div>
 
+                    {pickupLocation && (
+                      <div className="bg-sky-500/10 p-4 rounded-lg border border-sky-500/20 mb-4">
+                        <h4 className="font-semibold text-sky-400 mb-1 flex items-center">
+                          <MapPin className="h-4 w-4 mr-1" />
+                          Pickup Location
+                        </h4>
+                        <p className="text-sm text-gray-300">{pickupLocation}</p>
+                      </div>
+                    )}
+
                     <div className="bg-yellow-500/10 p-4 rounded-lg border border-yellow-500/20">
                       <h4 className="font-semibold text-yellow-400 mb-2">Verification Details Provided</h4>
                       <p className="text-sm text-gray-300">{claim.verificationDetails}</p>
                     </div>
 
-                    {claim.adminNotes && (
-                      <div className="mt-4 bg-sky-500/10 p-4 rounded-lg border border-sky-500/20">
-                        <h4 className="font-semibold text-sky-400 mb-2">Admin Notes</h4>
-                        <p className="text-sm text-gray-300">{claim.adminNotes}</p>
-                      </div>
+                    {claim.handoverStartedAt && (
+                      <p className="text-xs text-gray-400 mt-3">
+                        Handover started: {new Date(claim.handoverStartedAt).toLocaleString()}
+                      </p>
+                    )}
+                    {claim.handoverCompletedAt && (
+                      <p className="text-xs text-gray-400">
+                        Handover completed: {new Date(claim.handoverCompletedAt).toLocaleString()}
+                      </p>
                     )}
                   </div>
 
@@ -133,6 +183,24 @@ const Claims = () => {
                     >
                       View Match
                     </button>
+                    {claim.status === 'APPROVED' && canManageHandover(claim) && (
+                      <button
+                        onClick={() => handleHandover(claim.id, 'START')}
+                        disabled={actingClaimId === claim.id}
+                        className="px-4 py-2 bg-green-500/20 text-green-300 rounded-md hover:bg-green-500/30 border border-green-400/30 text-sm disabled:opacity-50"
+                      >
+                        Start Handover
+                      </button>
+                    )}
+                    {claim.status === 'UNDER_HANDOVER' && canManageHandover(claim) && (
+                      <button
+                        onClick={() => handleHandover(claim.id, 'COMPLETE')}
+                        disabled={actingClaimId === claim.id}
+                        className="px-4 py-2 bg-emerald-500/20 text-emerald-300 rounded-md hover:bg-emerald-500/30 border border-emerald-400/30 text-sm disabled:opacity-50"
+                      >
+                        Confirm Handover
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>

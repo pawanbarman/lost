@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../utils/api';
-import { Heart, MapPin, Calendar, Percent } from 'lucide-react';
+import { Heart, MapPin, Calendar, Percent, CheckCircle2, AlertCircle, XCircle } from 'lucide-react';
 
 const Matches = () => {
   const { isAuthenticated } = useAuth();
@@ -38,6 +38,12 @@ const Matches = () => {
     if (score >= 75) return 'Strong Match';
     if (score >= 60) return 'Possible Match';
     return 'Low Match';
+  };
+
+  const getConfidenceStyle = (confidence) => {
+    if (confidence === 'high') return 'bg-green-500/20 text-green-400 border border-green-500/30';
+    if (confidence === 'medium') return 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30';
+    return 'bg-gray-500/20 text-gray-400 border border-gray-500/30';
   };
 
   if (!isAuthenticated) {
@@ -87,6 +93,11 @@ const Matches = () => {
                     <span className="text-2xl font-bold">{match.score}%</span>
                   </div>
                   <p className="text-sm font-medium mt-1">{getMatchStrength(match.score)}</p>
+                  {match.confidence && (
+                    <p className={`text-xs font-medium mt-1 px-2 py-0.5 rounded-full inline-block ${getConfidenceStyle(match.confidence)}`}>
+                      {match.confidence} confidence
+                    </p>
+                  )}
                 </div>
                 <span className={`px-3 py-1 text-sm font-medium rounded-full ${
                   match.status === 'PENDING' ? 'bg-yellow-500/20 text-yellow-400' :
@@ -148,6 +159,55 @@ const Matches = () => {
                   </div>
                 </div>
               </div>
+
+              {match.summary && (match.summary.matching.length > 0 || match.summary.missing.length > 0 || match.summary.contradictory.length > 0) && (
+                <div className="mt-4 bg-white/5 rounded-lg border border-white/10 p-4">
+                  <h6 className="text-sm font-medium text-white mb-2">AI Match Evidence</h6>
+
+                  {match.summary.matching.length > 0 && (
+                    <ul className="space-y-0.5 mb-2">
+                      {match.summary.matching.map((item, index) => (
+                        <li key={`m-${index}`} className="flex items-center gap-2 text-sm text-green-400">
+                          <CheckCircle2 className="h-4 w-4 shrink-0" />
+                          {item}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+
+                  {match.summary.missing.length > 0 && (
+                    <div className="mb-2">
+                      <p className="flex items-center gap-2 text-sm text-amber-400">
+                        <AlertCircle className="h-4 w-4 shrink-0" />
+                        Missing information:
+                      </p>
+                      <ul className="ml-6 mt-0.5">
+                        {match.summary.missing.map((item, index) => (
+                          <li key={`miss-${index}`} className="text-sm text-gray-400">
+                            {item}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {match.summary.contradictory.length > 0 && (
+                    <div>
+                      <p className="flex items-center gap-2 text-sm text-red-400">
+                        <XCircle className="h-4 w-4 shrink-0" />
+                        Contradictory:
+                      </p>
+                      <ul className="ml-6 mt-0.5">
+                        {match.summary.contradictory.map((item, index) => (
+                          <li key={`c-${index}`} className="text-sm text-red-400">
+                            {item}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="mt-4 flex gap-4">
                 <button

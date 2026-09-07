@@ -34,6 +34,21 @@ export const getMatchById = async (req, res) => {
       return res.status(404).json({ error: 'Match not found' });
     }
 
+    // Only involved parties or admins may inspect a match in detail.
+    const isInvolved =
+      match.lostReport.userId === req.user.id || match.foundReport.userId === req.user.id;
+    if (!isInvolved && req.user.role !== 'ADMIN') {
+      return res.status(403).json({ error: 'Not authorized to view this match' });
+    }
+
+    // Private ownership evidence must never be returned to any client.
+    if (match.lostReport?.item?.privateDetails) {
+      delete match.lostReport.item.privateDetails;
+    }
+    if (match.foundReport?.item?.privateDetails) {
+      delete match.foundReport.item.privateDetails;
+    }
+
     res.json(match);
   } catch (error) {
     throw error;

@@ -1,20 +1,66 @@
 import prisma from '../config/database.js';
 import { reportSchema, updateReportSchema } from '../validators/reportValidator.js';
 import { matchingService } from '../services/matchingService.js';
+import { findEligibleCandidates, rankMatches } from '../services/matching/aiMatchingService.js';
+
+export const getReportMatches = async (req, res) => {
+  try {
+    const report = await prisma.report.findUnique({
+      where: { id: req.params.id },
+      include: { item: true }
+    });
+
+    if (!report) {
+      return res.status(404).json({ error: 'Report not found' });
+    }
+
+    if (report.userId !== req.user.id && req.user.role !== 'ADMIN') {
+      return res.status(403).json({ error: 'Not authorized to view matches for this report' });
+    }
+
+    const candidates = await findEligibleCandidates(report);
+    const ranked = rankMatches(report, candidates, { limit: 10 });
+
+    const matches = ranked.matches.map((match) => {
+      if (match.report.item?.privateDetails) {
+        delete match.report.item.privateDetails;
+      }
+      return {
+        lostReportId: match.lostReportId,
+        foundReportId: match.foundReportId,
+        score: Math.round(match.score * 100),
+        confidence: match.confidence,
+        evidence: match.evidence,
+        summary: match.summary,
+        report: match.report
+      };
+    });
+
+    res.json({ reportId: report.id, type: report.type, matches });
+  } catch (error) {
+    throw error;
+  }
+};
 
 export const createReport = async (req, res) => {
   try {
     const validatedData = reportSchema.parse(req.body);
     const imageUrl = req.file ? `/uploads/${req.file.filename}` : null;
 
-    const item = await prisma.item.create({
+const item = await prisma.item.create({
       data: {
         title: validatedData.title,
         category: validatedData.category,
         description: validatedData.description,
         imageUrl,
         privateDetails: validatedData.privateDetails || null,
-        currentLocation: validatedData.currentLocation || null
+        currentLocation: validatedData.currentLocation || null,
+        color: validatedData.color || null,
+        brand: validatedData.brand || null,
+        model: validatedData.model || null,
+        uniqueFeatures: validatedData.uniqueFeatures || null,
+        condition: validatedData.condition || null,
+        size: validatedData.size || null
       }
     });
 
@@ -26,10 +72,12 @@ export const createReport = async (req, res) => {
         location: validatedData.location,
         dateTime: new Date(validatedData.dateTime),
         eventId: validatedData.eventId,
+        communityId: validatedData.communityId || req.user.communityId || null,
         status: validatedData.type === 'LOST' ? 'LOST' : 'FOUND'
       },
       include: {
         item: true,
+        community: true,
         user: {
           select: {
             id: true,
@@ -54,13 +102,14 @@ export const createReport = async (req, res) => {
 
 export const getReports = async (req, res) => {
   try {
-    const { type, status, category, location, search } = req.query;
+    const { type, status, category, location, communityId, search } = req.query;
     
     const where = {};
     
     if (type) where.type = type;
     if (status) where.status = status;
     if (category) where.item = { category };
+    if (communityId) where.communityId = communityId;
     if (location) where.location = { contains: location, mode: 'insensitive' };
     if (search) {
       where.OR = [
@@ -74,6 +123,7 @@ export const getReports = async (req, res) => {
       where,
       include: {
         item: true,
+        community: true,
         user: {
           select: {
             id: true,
@@ -95,8 +145,9 @@ export const getReportById = async (req, res) => {
   try {
     const report = await prisma.report.findUnique({
       where: { id: req.params.id },
-      include: {
+include: {
         item: true,
+        community: true,
         user: {
           select: {
             id: true,
@@ -142,18 +193,20 @@ export const updateReport = async (req, res) => {
       return res.status(403).json({ error: 'Not authorized to edit this report' });
     }
 
-    const updatedReport = await prisma.report.update({
+const updatedReport = await prisma.report.update({
       where: { id: req.params.id },
       data: {
         location: validatedData.location,
-        dateTime: validatedData.dateTime ? new Date(validatedData.dateTime) : undefined
+        dateTime: validatedData.dateTime ? new Date(validatedData.dateTime) : undefined,
+        ...(validatedData.communityId !== undefined && { communityId: validatedData.communityId || null })
       },
       include: {
-        item: true
+        item: true,
+        community: true
       }
     });
 
-    if (validatedData.title || validatedData.category || validatedData.description || validatedData.privateDetails !== undefined || validatedData.currentLocation !== undefined) {
+    if (validatedData.title || validatedData.category || validatedData.description || validatedData.privateDetails !== undefined || validatedData.currentLocation !== undefined || validatedData.color !== undefined || validatedData.brand !== undefined || validatedData.model !== undefined || validatedData.uniqueFeatures !== undefined || validatedData.condition !== undefined || validatedData.size !== undefined) {
       await prisma.item.update({
         where: { id: report.itemId },
         data: {
@@ -161,7 +214,13 @@ export const updateReport = async (req, res) => {
           ...(validatedData.category && { category: validatedData.category }),
           ...(validatedData.description && { description: validatedData.description }),
           ...(validatedData.privateDetails !== undefined && { privateDetails: validatedData.privateDetails || null }),
-          ...(validatedData.currentLocation !== undefined && { currentLocation: validatedData.currentLocation || null })
+          ...(validatedData.currentLocation !== undefined && { currentLocation: validatedData.currentLocation || null }),
+          ...(validatedData.color !== undefined && { color: validatedData.color || null }),
+          ...(validatedData.brand !== undefined && { brand: validatedData.brand || null }),
+          ...(validatedData.model !== undefined && { model: validatedData.model || null }),
+          ...(validatedData.uniqueFeatures !== undefined && { uniqueFeatures: validatedData.uniqueFeatures || null }),
+          ...(validatedData.condition !== undefined && { condition: validatedData.condition || null }),
+          ...(validatedData.size !== undefined && { size: validatedData.size || null })
         }
       });
     }
@@ -205,6 +264,7 @@ export const getMyReports = async (req, res) => {
       where: { userId: req.user.id },
       include: {
         item: true,
+        community: true,
         event: true
       },
       orderBy: { createdAt: 'desc' }

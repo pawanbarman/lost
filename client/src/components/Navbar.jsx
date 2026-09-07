@@ -41,6 +41,7 @@ const Navbar = () => {
       { name: 'Dashboard', path: '/dashboard' },
       { name: 'Report Lost', path: '/report/lost' },
       { name: 'Report Found', path: '/report/found' },
+      { name: 'Found Items', path: '/found-feed' },
       { name: 'My Reports', path: '/my-reports' },
       { name: 'Matches', path: '/matches' },
       { name: 'Claims', path: '/claims' }

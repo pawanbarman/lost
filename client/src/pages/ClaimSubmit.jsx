@@ -5,7 +5,7 @@ import api from '../utils/api';
 import { FileText, CheckCircle } from 'lucide-react';
 
 const ClaimSubmit = () => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const matchId = searchParams.get('matchId');
@@ -60,6 +60,19 @@ const ClaimSubmit = () => {
     return (
       <div className="max-w-3xl mx-auto py-12 px-4 text-center">
         <p className="text-gray-400">Loading match details...</p>
+      </div>
+    );
+  }
+
+  const isLostOwner = match?.lostReport?.user?.id === user?.id;
+
+  if (!isLostOwner) {
+    return (
+      <div className="max-w-3xl mx-auto py-12 px-4 text-center">
+        <h1 className="text-2xl font-bold text-white mb-3">Not Eligible to Claim</h1>
+        <p className="text-gray-400">
+          Only the owner of the lost item in this match may submit a claim for the found item.
+        </p>
       </div>
     );
   }
