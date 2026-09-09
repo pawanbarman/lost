@@ -22,12 +22,6 @@ const Home = () => {
     <div className="min-h-screen">
       {/* Hero Section */}
       <section className="relative overflow-hidden py-28 md:py-36">
-        {/* Soft background glow */}
-        <div aria-hidden="true" className="absolute inset-0 pointer-events-none">
-          <div className="absolute left-1/2 top-16 -translate-x-1/2 w-[42rem] h-[42rem] rounded-full bg-sky-500/10 blur-3xl"></div>
-          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-72 h-72 rounded-full bg-purple-500/10 blur-2xl"></div>
-        </div>
-
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center">
             <p className="inline-flex items-center text-sm font-medium uppercase tracking-widest text-sky-300/80 border border-sky-400/20 rounded-full px-4 py-1.5 mb-8 bg-sky-500/5">
