@@ -45,7 +45,7 @@ export const getReportMatches = async (req, res) => {
 export const createReport = async (req, res) => {
   try {
     const validatedData = reportSchema.parse(req.body);
-    const imageUrl = req.file ? `/uploads/${req.file.filename}` : null;
+    const imageUrl = req.file ? (req.file.cloudinaryUrl || `/uploads/${req.file.filename}`) : null;
 
 const item = await prisma.item.create({
       data: {
@@ -193,7 +193,10 @@ export const updateReport = async (req, res) => {
       return res.status(403).json({ error: 'Not authorized to edit this report' });
     }
 
-const updatedReport = await prisma.report.update({
+    // Handle image upload if provided
+    const imageUrl = req.file ? (req.file.cloudinaryUrl || `/uploads/${req.file.filename}`) : undefined;
+
+    const updatedReport = await prisma.report.update({
       where: { id: req.params.id },
       data: {
         location: validatedData.location,
@@ -206,22 +209,24 @@ const updatedReport = await prisma.report.update({
       }
     });
 
-    if (validatedData.title || validatedData.category || validatedData.description || validatedData.privateDetails !== undefined || validatedData.currentLocation !== undefined || validatedData.color !== undefined || validatedData.brand !== undefined || validatedData.model !== undefined || validatedData.uniqueFeatures !== undefined || validatedData.condition !== undefined || validatedData.size !== undefined) {
+    const itemUpdateData = {};
+    if (validatedData.title) itemUpdateData.title = validatedData.title;
+    if (validatedData.category) itemUpdateData.category = validatedData.category;
+    if (validatedData.description) itemUpdateData.description = validatedData.description;
+    if (validatedData.privateDetails !== undefined) itemUpdateData.privateDetails = validatedData.privateDetails || null;
+    if (validatedData.currentLocation !== undefined) itemUpdateData.currentLocation = validatedData.currentLocation || null;
+    if (validatedData.color !== undefined) itemUpdateData.color = validatedData.color || null;
+    if (validatedData.brand !== undefined) itemUpdateData.brand = validatedData.brand || null;
+    if (validatedData.model !== undefined) itemUpdateData.model = validatedData.model || null;
+    if (validatedData.uniqueFeatures !== undefined) itemUpdateData.uniqueFeatures = validatedData.uniqueFeatures || null;
+    if (validatedData.condition !== undefined) itemUpdateData.condition = validatedData.condition || null;
+    if (validatedData.size !== undefined) itemUpdateData.size = validatedData.size || null;
+    if (imageUrl !== undefined) itemUpdateData.imageUrl = imageUrl;
+
+    if (Object.keys(itemUpdateData).length > 0) {
       await prisma.item.update({
         where: { id: report.itemId },
-        data: {
-          ...(validatedData.title && { title: validatedData.title }),
-          ...(validatedData.category && { category: validatedData.category }),
-          ...(validatedData.description && { description: validatedData.description }),
-          ...(validatedData.privateDetails !== undefined && { privateDetails: validatedData.privateDetails || null }),
-          ...(validatedData.currentLocation !== undefined && { currentLocation: validatedData.currentLocation || null }),
-          ...(validatedData.color !== undefined && { color: validatedData.color || null }),
-          ...(validatedData.brand !== undefined && { brand: validatedData.brand || null }),
-          ...(validatedData.model !== undefined && { model: validatedData.model || null }),
-          ...(validatedData.uniqueFeatures !== undefined && { uniqueFeatures: validatedData.uniqueFeatures || null }),
-          ...(validatedData.condition !== undefined && { condition: validatedData.condition || null }),
-          ...(validatedData.size !== undefined && { size: validatedData.size || null })
-        }
+        data: itemUpdateData
       });
     }
 
