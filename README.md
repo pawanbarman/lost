@@ -1,8 +1,8 @@
-# LeftBehind — Lost & Found Platform
+# Lost&Found — Lost & Found Platform
 
-> **Lost something? Found something? LeftBehind helps connect the right person with the right item while protecting ownership information.**
+> **Lost something? Found something? Lost&Found helps connect the right person with the right item while protecting ownership information.**
 
-LeftBehind is a full-stack Lost & Found web platform featuring smart matching, ownership verification, admin moderation, event management, and a polished dark-themed UI.
+Lost&Found is a full-stack Lost & Found web platform featuring smart matching, ownership verification, admin moderation, event management, and a polished dark-themed UI.
 
 ---
 

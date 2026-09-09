@@ -52,7 +52,7 @@ describe('storageService', () => {
       await storageService.uploadImage(buffer);
 
       expect(cloudinary.uploader.upload_stream).toHaveBeenCalledWith(
-        expect.objectContaining({ folder: 'leftbehind/reports' }),
+        expect.objectContaining({ folder: 'lost-and-found/reports' }),
         expect.any(Function)
       );
     });
@@ -81,9 +81,9 @@ describe('storageService', () => {
 
   describe('extractPublicIdFromUrl', () => {
     it('extracts public ID from Cloudinary URL', () => {
-      const url = 'https://res.cloudinary.com/test-cloud/image/upload/v1234567890/leftbehind/reports/test-id.jpg';
+      const url = 'https://res.cloudinary.com/test-cloud/image/upload/v1234567890/lost-and-found/reports/test-id.jpg';
       const publicId = storageService.extractPublicIdFromUrl(url);
-      expect(publicId).toBe('leftbehind/reports/test-id');
+      expect(publicId).toBe('lost-and-found/reports/test-id');
     });
 
     it('returns null for empty URL', () => {

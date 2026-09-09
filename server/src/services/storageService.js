@@ -18,7 +18,7 @@ cloudinary.config({
 
 export const storageService = {
   async uploadImage(buffer, options = {}) {
-    const folder = options.folder || 'leftbehind/reports';
+    const folder = options.folder || 'lost-and-found/reports';
     const publicId = options.publicId || `report-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
 
     return new Promise((resolve, reject) => {

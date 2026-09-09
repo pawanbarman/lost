@@ -51,7 +51,7 @@ export async function uploadToCloudinary(req, res, next) {
   }
 
   try {
-    const folder = `leftbehind/reports/${req.user?.id || 'anonymous'}`;
+    const folder = `lost-and-found/reports/${req.user?.id || 'anonymous'}`;
     const publicId = `report-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
     const secureUrl = await storageService.uploadImage(req.file.buffer, { folder, publicId });
     req.file.cloudinaryUrl = secureUrl;

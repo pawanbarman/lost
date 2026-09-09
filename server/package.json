@@ -1,5 +1,5 @@
 {
-  "name": "leftbehind-server",
+  "name": "lost-and-found-server",
   "version": "1.0.0",
   "description": "LeftBehind Lost & Found Platform - Backend",
   "main": "src/index.js",
