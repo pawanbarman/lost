@@ -95,9 +95,7 @@ const ReportEdit = () => {
     if (image) data.append('image', image);
 
     try {
-      await api.put(`/reports/${id}`, data, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
+      await api.put(`/reports/${id}`, data);
       navigate(`/reports/${id}`);
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to update report. Please try again.');
