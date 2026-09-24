@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import { Search, MapPin, Shield, Clock, CheckCircle, Users, ArrowRight, Zap } from 'lucide-react';
 
 const HERO_PHRASES = ['Lost something?', 'Found something?', 'LeftBehind can help.'];
 
 const Home = () => {
+  const { isAuthenticated } = useAuth();
   const [phraseIndex, setPhraseIndex] = useState(0);
 
   useEffect(() => {
@@ -132,16 +134,18 @@ const Home = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <div className="bg-white/5 backdrop-blur-sm rounded-2xl border border-white/10 p-12">
             <h2 className="text-3xl font-bold mb-6 text-white">
-              Ready to Get Started?
+              {isAuthenticated ? 'Welcome back!' : 'Ready to Get Started?'}
             </h2>
             <p className="text-xl mb-8 text-gray-400">
-              Join thousands of users who have successfully recovered their lost items.
+              {isAuthenticated
+                ? 'Browse reports, follow matches, or check your notification center.'
+                : 'Join thousands of users who have successfully recovered their lost items.'}
             </p>
             <Link
-              to="/register"
+              to={isAuthenticated ? '/dashboard' : '/register'}
               className="inline-block px-8 py-4 bg-sky-500/20 text-sky-300 rounded-lg font-semibold hover:bg-sky-500/30 border border-sky-400/30 transition-all"
             >
-              Create Free Account
+              {isAuthenticated ? 'Go to Dashboard' : 'Create Free Account'}
             </Link>
           </div>
         </div>

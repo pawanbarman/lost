@@ -188,16 +188,6 @@ npm run dev
 
 ---
 
-## Demo Credentials
-
-| Role | Email | Password |
-|------|-------|----------|
-| Admin | admin@leftbehind.com | admin123 |
-| User | john@example.com | user123 |
-| User | jane@example.com | user123 |
-
----
-
 ## API Overview
 
 | Group | Endpoints |

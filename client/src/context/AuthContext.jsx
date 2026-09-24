@@ -63,6 +63,16 @@ export const AuthProvider = ({ children }) => {
     return userData;
   };
 
+  const forgotPassword = async (email) => {
+    const response = await api.post('/auth/forgot-password', { email });
+    return response.data;
+  };
+
+  const resetPassword = async (token, password) => {
+    const response = await api.post('/auth/reset-password', { token, password });
+    return response.data;
+  };
+
   const logout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
@@ -76,6 +86,8 @@ export const AuthProvider = ({ children }) => {
     loading,
     login,
     register,
+    forgotPassword,
+    resetPassword,
     logout,
     isAdmin,
     isAuthenticated: !!user

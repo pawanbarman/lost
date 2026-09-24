@@ -104,14 +104,13 @@ const Login = () => {
                 Sign up
               </Link>
             </p>
+            <p className="mt-2 text-sm text-gray-400">
+              <Link to="/forgot-password" className="font-medium text-sky-400 hover:text-sky-300">
+                Forgot your password?
+              </Link>
+            </p>
           </div>
         </form>
-
-        <div className="mt-6 p-4 bg-sky-500/10 border border-sky-400/20 rounded-lg">
-          <p className="text-sm text-sky-300 font-medium mb-2">Demo Credentials:</p>
-          <p className="text-xs text-sky-300/80">Admin: admin@leftbehind.com / admin123</p>
-          <p className="text-xs text-sky-300/80">User: john@example.com / user123</p>
-        </div>
       </div>
     </div>
   );

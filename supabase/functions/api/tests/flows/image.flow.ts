@@ -5,7 +5,8 @@
 //   - a running API on BASE_URL (default http://localhost:8000)
 //   - Cloudinary credentials in supabase/functions/api/.env
 //   - TEST_IMAGE env var pointing to a .jpg file to upload (or ./test-image.jpg)
-// Behavior mirrors tests/flows/integration.flow.ts helpers.
+// Behavior mirrors tests/flows/integration.flow.ts helpers. No seeded/demo
+// accounts are used — a throwaway user is registered at runtime.
 
 const BASE_URL = Deno.env.get("BASE_URL") ?? "http://localhost:8000";
 const RUN_IP = `10.${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}`;
@@ -89,10 +90,12 @@ console.log(`Image flow (${imageFile.name}, ${mime}, ${imageBytes.length} bytes)
 const step = crypto.randomUUID().slice(0, 8);
 const title = `Flow Photo Item ${step}`;
 
-// Login as john.
-const login = await call("POST", "/api/auth/login", { body: { email: "john@example.com", password: "user123" } });
-check("login", login.status === 200 && !!login.body?.token, JSON.stringify(login.body));
-const john = login.body?.token as string;
+// Register a throwaway user (no seeded accounts exist).
+const reg = await call("POST", "/api/auth/register", {
+  body: { name: "Image Flow Tester", email: `flow-img-${step}@example.com`, password: "flowpass123" },
+});
+check("register throwaway user 201", reg.status === 201 && !!reg.body?.token, JSON.stringify(reg.body));
+const john = reg.body?.token as string;
 
 // Reject non-image files before hitting Cloudinary.
 const badUpload = await upload("POST", "/api/reports", john, badFile, {

@@ -1,6 +1,6 @@
 # Migration Plan: Render/Vercel → Supabase + New Vercel Account
 
-> Status: Phases 0–3 complete (2026-09-25). Phase 2 (API port) verified end-to-end: integration flow **86/86 PASS** + unit tests **13 suites / 64 steps green**. Phase 3 (client image pre-compression) implemented + server upload path verified **10/10 PASS**; final in-browser check is a manual step. Phase 4 (deploy) next.
+> Status: Phases 0–4 complete (2026-09-25) + **demo-credential & seed cleanup DONE** (2026-09-25): all seeded demo accounts/data deleted from the live Supabase DB, demo-credential hints stripped from the client (`Login.jsx`) + `README.md`, both seed files (`supabase/seed.sql`, `server/prisma/seed.js`) reduced to reference data, and the integration/image flows rewritten to register throwaway users at runtime (verified `deno check` green). Phase 2 (API port) verified end-to-end: integration flow **86/86 PASS** + unit tests **13 suites / 64 steps green**. Phase 3 (client image pre-compression) implemented + server upload path verified **10/10 PASS**; final in-browser check is a manual step. Phase 4 (deploy) DONE — backend live on Supabase Edge Function + frontend live on new Vercel project (see Phase 4 notes). **Phase 5 (cutover) NOT started — work paused.**
 > Date: 2026-09-25
 
 ## History (last session)
@@ -139,6 +139,13 @@ Structure under `supabase/functions/api/`:
 - **Status 2026-09-25**: DONE — util + wiring + build green; server upload path verified 10/10 (`tests/flows/image.flow.ts`). Remaining: optional in-browser 5MB-photo smoke test via `npm run dev`.
 
 ## Phase 4 — Deploy backend & new Vercel
+
+> **Status 2026-09-25: DONE.** Backend deployed + verified; new Vercel frontend live. Details:
+> - Secrets set on project (Digest listed via `supabase secrets list`): `JWT_SECRET`, `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`, `ALLOWED_ORIGINS` (`http://localhost:5173,http://127.0.0.1:54321,https://lost-found-client.vercel.app`). `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` are SUPABASE-injected defaults — `supabase secrets set` refuses `SUPABASE_`-prefixed names and they are present at runtime without being set.
+> - Deploy: `supabase functions deploy api --no-verify-jwt --use-api --import-map ./supabase/functions/deno.json` (must pass `--import-map` — the deploy bundler does NOT auto-read `deno.json`; first attempt without it failed with `Relative import path "oak" not prefixed`).
+> - Verified: `GET /functions/v1/api/health` → 200 `{"status":"ok"}`, `verify_jwt=false` (confirmed via MCP list), CORS preflight from `http://localhost:5173` AND `https://lost-found-client.vercel.app` → 204 with correct `Access-Control-Allow-Origin`; login round-trip 200 with token + ACAO header. Bundle includes no tests/flow files.
+> - New Vercel project `lost-found-client` (account `barmanpawan524-6246`, org `pawan-a6f7`, reused account; old `lost` project/Express env vars left untouched): root dir `client` (local settings via `vercel.json` → framework vite, output `dist`, build `npm run build`), GitHub repo connected, `VITE_API_URL` set for Production + all Preview branches to `https://cuhngnehtlswsdemsdpr.supabase.co/functions/v1/api`. Production deploy: **https://lost-found-client.vercel.app** (built bundle confirmed to embed the Supabase function URL; login from that origin returns 200 + token).
+> - Local `.env` (`supabase/functions/api/.env`, gitignored) updated to include `ALLOWED_ORIGINS` with the new Vercel domain for parity.
 
 - Apply migration/RPCs/seed to the Supabase project.
 - `supabase secrets set JWT_SECRET CLOUDINARY_* ALLOWED_ORIGINS`.

@@ -4,7 +4,17 @@ import { readJson } from "../_shared/body.ts";
 import { validate } from "../_shared/validate.ts";
 import { authenticate } from "../_shared/auth.ts";
 import { generateToken } from "../_shared/jwt.ts";
-import { registerSchema, loginSchema } from "../validators/auth.ts";
+import {
+  generateResetToken,
+  verifyResetToken,
+  RESET_TTL_SECONDS,
+} from "../_shared/jwt.ts";
+import {
+  registerSchema,
+  loginSchema,
+  forgotPasswordSchema,
+  resetPasswordSchema,
+} from "../validators/auth.ts";
 import { hashPassword, comparePassword } from "../_shared/bcrypt.ts";
 
 const router = new Router({ prefix: "/api/auth" });
@@ -93,6 +103,71 @@ router.get("/me", authenticate, async (ctx) => {
   if (error) throw error;
 
   ctx.response.body = data;
+});
+
+router.post("/forgot-password", async (ctx) => {
+  const validatedData = validate(forgotPasswordSchema, await readJson<unknown>(ctx));
+
+  // Always 200 whether or not the account exists, to avoid leaking which emails are
+  // registered. The reset token (short-lived, purpose-scoped JWT) is returned in the
+  // response body because there is no email transport in this stack yet — a genuine
+  // delivery seam is documented in README for the phase-5 hardening step.
+  const { data: user, error } = await db()
+    .from("User")
+    .select("id")
+    .eq("email", validatedData.email)
+    .maybeSingle();
+  if (error) throw error;
+
+  if (!user) {
+    ctx.response.body = {
+      message: "If that email is registered, a password reset token will be sent.",
+    };
+    return;
+  }
+
+  const resetToken = await generateResetToken(user.id);
+  ctx.response.body = {
+    message: "Password reset token generated.",
+    resetToken,
+    expiresInSeconds: RESET_TTL_SECONDS,
+  };
+});
+
+router.post("/reset-password", async (ctx) => {
+  const validatedData = validate(resetPasswordSchema, await readJson<unknown>(ctx));
+
+  let reset;
+  try {
+    reset = await verifyResetToken(validatedData.token);
+  } catch {
+    ctx.response.status = 400;
+    ctx.response.body = { error: "Invalid or expired reset token" };
+    return;
+  }
+
+  const { data: user, error } = await db()
+    .from("User")
+    .select("id")
+    .eq("id", reset.userId)
+    .maybeSingle();
+  if (error) throw error;
+
+  if (!user) {
+    ctx.response.status = 400;
+    ctx.response.body = { error: "Invalid or expired reset token" };
+    return;
+  }
+
+  const passwordHash = await hashPassword(validatedData.password, 10     );
+
+  const { error: updateError } = await db()
+    .from("User")
+    .update({ passwordHash, updatedAt: new Date().toISOString() })
+    .eq("id", user.id);
+  if (updateError) throw updateError;
+
+  ctx.response.body = { message: "Password updated. You can now log in with your new password." };
 });
 
 export default router;

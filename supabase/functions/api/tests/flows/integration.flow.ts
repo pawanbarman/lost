@@ -4,11 +4,14 @@
 // --env-file=.env index.ts`, listening on :8000) backed by the hosted Supabase
 // DB. Exits non-zero on any failed assertion.
 //
-//   deno run --allow-net tests/flows/integration.flow.ts
+//   deno run --allow-env --allow-net tests/flows/integration.flow.ts
 //
-// Seeded accounts used: admin@leftbehind.com / admin123, john@example.com /
-// user123, jane@example.com / user123. A throwaway user is registered to cover
-// the register path and 403-as-stranger cases.
+// No seeded/demo accounts are used. Throwaway users are registered at runtime
+// (owner/finder/stranger as plain USERs, one promoted to ADMIN via the service
+// role key); `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` must be in the
+// environment (e.g. from supabase/functions/api/.env) for that bootstrap step.
+
+import { createClient } from "@supabase/supabase-js";
 
 const BASE = Deno.env.get("BASE_URL") ?? "http://localhost:8000";
 const RUN_IP = `10.${Math.floor(Math.random() * 250) + 1}.${Math.floor(Math.random() * 250) + 1}.${Math.floor(Math.random() * 250) + 2}`;
@@ -64,6 +67,23 @@ function seq(prefix: string, n: number): string {
   return `${prefix} ${n}`;
 }
 
+// Direct service-role bootstrap for throwaway users (no seeded admin exists).
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
+  console.error("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY env vars are required to bootstrap flow users");
+  Deno.exit(2);
+}
+const adminClient = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+const setRole = async (userId: string, role: string) => {
+  const { error } = await adminClient.from("User").update({ role }).eq("id", userId);
+  if (error) throw new Error(`setRole ${userId}: ${error.message}`);
+};
+const setCommunity = async (userId: string, communityId: string) => {
+  const { error } = await adminClient.from("User").update({ communityId }).eq("id", userId);
+  if (error) throw new Error(`setCommunity ${userId}: ${error.message}`);
+};
+
 console.log(`Flow run ${step} targeting ${BASE} from ${RUN_IP}`);
 
 // ---------------------------------------------------------------------------
@@ -95,24 +115,31 @@ console.log(`Flow run ${step} targeting ${BASE} from ${RUN_IP}`);
 // ---------------------------------------------------------------------------
 // Auth
 // ---------------------------------------------------------------------------
-const admin = (await call("POST", "/api/auth/login", {
-  body: { email: "admin@leftbehind.com", password: "admin123" },
+// Register throwaway users (no seeded accounts exist).
+const ownerReg = await call("POST", "/api/auth/register", {
+  body: { name: "Flow Owner", email: `flow-owner-${step}@example.com`, password: "flowpass123" },
   headers: { "x-forwarded-for": RUN_IP },
-})).body;
-check("admin login", admin?.token && admin?.user?.role === "ADMIN", JSON.stringify(admin));
+});
+check("register owner 201", ownerReg.status === 201 && ownerReg.body?.token, JSON.stringify(ownerReg.body));
+await setCommunity(ownerReg.body?.user?.id, "com-campus");
 
-const john = (await call("POST", "/api/auth/login", {
-  body: { email: "john@example.com", password: "user123" },
+const janeReg = await call("POST", "/api/auth/register", {
+  body: { name: "Flow Finder", email: `flow-finder-${step}@example.com`, password: "flowpass123" },
   headers: { "x-forwarded-for": RUN_IP },
-})).body;
-check("john login", !!(john?.token) && john?.user?.id?.length > 0, JSON.stringify(john));
+});
+check("register finder 201", janeReg.status === 201 && janeReg.body?.token, JSON.stringify(janeReg.body));
+await setCommunity(janeReg.body?.user?.id, "com-campus");
 
-const jane = (await call("POST", "/api/auth/login", {
-  body: { email: "jane@example.com", password: "user123" },
+const adminReg = await call("POST", "/api/auth/register", {
+  body: { name: "Flow Admin", email: `flow-admin-${step}@example.com`, password: "flowpass123" },
   headers: { "x-forwarded-for": RUN_IP },
-})).body;
-check("jane login", !!(jane?.token), JSON.stringify(jane));
+});
+check("register admin candidate 201", adminReg.status === 201 && adminReg.body?.token, JSON.stringify(adminReg.body));
+await setRole(adminReg.body?.user?.id, "ADMIN");
 
+const admin = adminReg.body;
+const john = ownerReg.body;
+const jane = janeReg.body;
 const freshEmail = `flow-${step}@example.com`;
 const reg = await call("POST", "/api/auth/register", {
   body: { name: "Flow Tester", email: freshEmail, password: "flowpass123" },
@@ -121,6 +148,9 @@ const reg = await call("POST", "/api/auth/register", {
 check("register new user 201", reg.status === 201 && reg.body?.token && reg.body?.user?.email === freshEmail, JSON.stringify(reg.body));
 const fresh = reg.body;
 const freshId: string = fresh?.user?.id;
+
+const adminMe = await call("GET", "/api/auth/me", { token: admin.token, headers: { "x-forwarded-for": RUN_IP } });
+check("admin bootstrap role", adminMe.status === 200 && adminMe.body?.role === "ADMIN", JSON.stringify(adminMe.body));
 
 {
   const dup = await call("POST", "/api/auth/register", {
@@ -136,7 +166,7 @@ const freshId: string = fresh?.user?.id;
   check("weak password rejected 400", weak.status === 400, JSON.stringify(weak.body));
 
   const badLogin = await call("POST", "/api/auth/login", {
-    body: { email: "john@example.com", password: "wrong" },
+    body: { email: ownerReg.body?.user?.email, password: "wrongpass" },
     headers: { "x-forwarded-for": RUN_IP },
   });
   check("wrong password 401", badLogin.status === 401 && badLogin.body?.error === "Invalid credentials", JSON.stringify(badLogin.body));
@@ -477,7 +507,7 @@ let claimId: string;
   const adminDetail = await call("GET", `/api/claims/${claimId}`, { token: admin.token, headers: { "x-forwarded-for": RUN_IP } });
   check(
     "admin claim detail shows claimant email",
-    adminDetail.status === 200 && adminDetail.body?.claimant?.email === "john@example.com",
+    adminDetail.status === 200 && adminDetail.body?.claimant?.email === ownerReg.body?.user?.email,
     JSON.stringify(adminDetail.body)?.slice(0, 200),
   );
 }
