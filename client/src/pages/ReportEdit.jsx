@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../utils/api';
+import { compressImage } from '../utils/compressImage';
 import { Edit, Upload, MapPin, Calendar, ArrowLeft } from 'lucide-react';
 
 const ReportEdit = () => {
@@ -92,7 +93,7 @@ const ReportEdit = () => {
     data.append('dateTime', formData.dateTime);
     if (formData.privateDetails) data.append('privateDetails', formData.privateDetails);
     if (formData.currentLocation) data.append('currentLocation', formData.currentLocation);
-    if (image) data.append('image', image);
+    if (image) data.append('image', await compressImage(image));
 
     try {
       await api.put(`/reports/${id}`, data);

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../utils/api';
+import { compressImage } from '../utils/compressImage';
 import { Search, Upload, MapPin, Calendar, Clock } from 'lucide-react';
 
 const ReportLost = () => {
@@ -105,7 +106,7 @@ const ReportLost = () => {
     if (formData.condition) data.append('condition', formData.condition);
     if (formData.size) data.append('size', formData.size);
     if (formData.uniqueFeatures) data.append('uniqueFeatures', formData.uniqueFeatures);
-    if (image) data.append('image', image);
+    if (image) data.append('image', await compressImage(image));
 
     try {
       await api.post('/reports', data);
