@@ -192,7 +192,7 @@ npm run dev
 
 | Group | Endpoints |
 |-------|-----------|
-| Auth | `POST /register`, `POST /login`, `GET /me` |
+| Auth | `POST /register`, `POST /login`, `GET /me`, `POST /forgot-password`, `POST /reset-password` |
 | Reports | CRUD + `GET /my` + image upload |
 | Search | Full-text with type/category/status/location/date filters |
 | Matches | List, detail, update status (with auth) |
@@ -203,6 +203,12 @@ npm run dev
 | Categories | CRUD (admin), public list |
 
 ---
+
+## Deployment
+
+- **Frontend**: https://lost-found-client.vercel.app (Vercel; `VITE_API_URL` points at the Edge Function).
+- **Backend**: Supabase Edge Function `api` → `https://cuhngnehtlswsdemsdpr.supabase.co/functions/v1/api` (deploy-verified 2026-09-25: health 200, CORS from `localhost:5173` + Vercel origin, register/login and forgot/reset-password round-trips green).
+- **Password reset**: `POST /api/auth/forgot-password` returns a short-lived reset token directly in the JSON response (no email delivery yet); `POST /api/auth/reset-password` exchanges that token for a new password.
 
 ## Security Features
 

@@ -1,4 +1,4 @@
-import type { Middleware } from "oak";
+import { HttpError, type Middleware } from "oak";
 
 export class ApiError extends Error {
   statusCode: number;
@@ -13,6 +13,10 @@ export class ApiError extends Error {
 export function toErrorResponse(err: unknown): { status: number; body: { error: string } } {
   if (err instanceof ApiError) {
     return { status: err.statusCode, body: { error: err.message } };
+  }
+
+  if (err instanceof HttpError) {
+    return { status: err.status, body: { error: err.message } };
   }
 
   if (err instanceof Error) {
