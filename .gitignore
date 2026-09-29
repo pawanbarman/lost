@@ -4,12 +4,6 @@ node_modules/
 !.env.example
 dist/
 build/
-uploads/*.jpg
-uploads/*.jpeg
-uploads/*.png
-uploads/*.webp
-uploads/*
-!uploads/.gitkeep
 *.log
 .DS_Store
 Thumbs.db
@@ -19,3 +13,18 @@ Thumbs.db
 .idea/
 coverage/
 status.md
+
+# Python (ml-service)
+__pycache__/
+*.py[cod]
+
+# Model weights are never committed. DINOv2 is fetched from the Hugging Face
+# hub at runtime into the local cache; only the small metadata artifacts in
+# ml-service/model/ (metadata.json, metadata_matcher.joblib) are tracked.
+.huggingface/
+*.safetensors
+*.bin
+*.onnx
+*.pt
+*.pth
+*.ckpt

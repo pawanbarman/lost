@@ -4,6 +4,7 @@ import { MATCH_DETAIL_SELECT, REPORT_COLUMNS, ITEM_FULL } from "../_shared/selec
 import { findEligibleCandidates, rankMatches } from "./aiMatchingService.ts";
 import { compareFeatureVectors } from "./ruleBasedMatcher.ts";
 import { extractFeatureVector } from "./featureExtractor.ts";
+import { mlImageSimilarityProvider } from "./mlImageProvider.ts";
 
 export const MATCH_WEIGHTS = {
   category: 25,
@@ -157,7 +158,13 @@ export const matchingService = {
     if (!reportData) return [];
 
     const candidates = await findEligibleCandidates(reportData);
-    const ranked = rankMatches(reportData as never, candidates);
+    // DINOv2 image similarity is supplied as evidence only. When the ML service
+    // is unconfigured or fails, the provider returns null and the result is
+    // identical to the pre-ML behaviour: metadata-only scoring, the same
+    // weighted score, and the same PERSISTENCE_THRESHOLD.
+    const ranked = await rankMatches(reportData as never, candidates, {
+      imageSimilarity: mlImageSimilarityProvider,
+    });
 
     const matches = [];
 

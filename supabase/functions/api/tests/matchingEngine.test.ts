@@ -386,7 +386,7 @@ describe("findEligibleCandidates (community scoping)", () => {
 });
 
 describe("rankMatches", () => {
-  it("returns matches sorted by score descending", () => {
+  it("returns matches sorted by score descending", async () => {
     const report = makeReport();
 
     const strong = makeReport({ id: "r-strong", userId: "u2", type: "FOUND" });
@@ -411,7 +411,7 @@ describe("rankMatches", () => {
       },
     });
 
-    const { matches } = rankMatches(report as never, [weak, medium, strong] as never);
+    const { matches } = await rankMatches(report as never, [weak, medium, strong] as never);
 
     assertEquals(
       matches.map((m) => m.score),
@@ -421,7 +421,7 @@ describe("rankMatches", () => {
     assertEquals(matches[0].score, 1);
   });
 
-  it("limits the number of returned matches", () => {
+  it("limits the number of returned matches", async () => {
     const report = makeReport();
     const candidates = [1, 2, 3].map((i) =>
       makeReport({
@@ -432,20 +432,32 @@ describe("rankMatches", () => {
       })
     );
 
-    const { matches } = rankMatches(report as never, candidates as never, { limit: 2 });
+    const { matches } = await rankMatches(report as never, candidates as never, { limit: 2 });
 
     assertEquals(matches.length, 2);
   });
 
-  it("exposes an optional image similarity provider hook", () => {
+  it("exposes an optional image similarity provider hook", async () => {
     const report = makeReport();
     const candidate = makeReport({ id: "r2", userId: "u2", type: "FOUND" });
 
-    const { matches } = rankMatches(report as never, [candidate] as never, {
+    const { matches } = await rankMatches(report as never, [candidate] as never, {
       imageSimilarity: () => 0.91,
     });
 
     assertEquals(matches[0].imageSimilarity, 0.91);
     assertEquals(matches[0].evidence.image.status, "match");
+  });
+
+  it("awaits an async image similarity provider", async () => {
+    const report = makeReport();
+    const candidate = makeReport({ id: "r2", userId: "u2", type: "FOUND" });
+
+    const { matches } = await rankMatches(report as never, [candidate] as never, {
+      imageSimilarity: () => Promise.resolve(0.42),
+    });
+
+    assertEquals(matches[0].imageSimilarity, 0.42);
+    assertEquals(matches[0].evidence.image.similarity, 0.42);
   });
 });

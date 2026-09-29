@@ -1,0 +1,28 @@
+{
+  "model": "LogisticRegression",
+  "metadata_features": [
+    "category_similarity",
+    "title_similarity",
+    "description_similarity",
+    "color_similarity",
+    "brand_similarity",
+    "model_similarity",
+    "unique_feature_similarity",
+    "condition_similarity",
+    "size_similarity",
+    "location_similarity",
+    "time_similarity"
+  ],
+  "image_model": "facebook/dinov2-base",
+  "image_embedding_dimension": 768,
+  "image_component": "DINOv2 cosine similarity",
+  "ensemble_weights": {
+    "metadata": 0.9,
+    "image": 0.1
+  },
+  "decision_thresholds": {
+    "high_confidence": 0.7,
+    "possible_match": 0.4
+  },
+  "status": "prototype"
+}

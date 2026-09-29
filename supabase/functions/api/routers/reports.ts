@@ -17,6 +17,7 @@ import { likePattern, orLikePattern } from "../_shared/filters.ts";
 import { reportSchema, updateReportSchema } from "../validators/report.ts";
 import { findEligibleCandidates, rankMatches } from "../matching/aiMatchingService.ts";
 import { matchingService } from "../matching/matchingService.ts";
+import { mlImageSimilarityProvider } from "../matching/mlImageProvider.ts";
 
 const router = new Router({ prefix: "/api/reports" });
 
@@ -58,7 +59,12 @@ router.get("/:id/matches", authenticate, async (ctx) => {
   }
 
   const candidates = await findEligibleCandidates(report as never);
-  const ranked = rankMatches(report as never, candidates, { limit: 10 });
+  // Same provider as the automatic matching path so the preview and the real
+  // run agree on image evidence.
+  const ranked = await rankMatches(report as never, candidates, {
+    limit: 10,
+    imageSimilarity: mlImageSimilarityProvider,
+  });
 
   const matches = ranked.matches.map((match) => {
     const candidate = match.report as unknown as Record<string, unknown>;
