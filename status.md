@@ -1,10 +1,12 @@
-``# Cleanup Status — Lost & Found
+# Cleanup Status — Lost & Found
 
 Last updated: 2026-10-02 · Repo: `P:\lost` · Branch: `master`
 
-Plan of record: the 6-phase cleanup agreed on 2026-09-29. Phases 0, 1, 2a, 2b, 3, 3b, 3c, 4 are
-**done and verified**; Phase 5 is **done** (README rewritten, stale handoff docs deleted). This file
-is the fast-orientation doc — `README.md` is the public-facing one.
+**Two plans of record live in this file:**
+1. The 6-phase cleanup agreed 2026-09-29 — **all done and verified** (§3).
+2. The chat feature, agreed 2026-10-02 — **phases C1–C6, C1 in progress** (§4).
+
+This file is the fast-orientation doc — `README.md` is the public-facing one.
 The old `MIGRATION_COMPLETE_PLAN.md` (Render→Supabase history) and `DOCS_DEMO_CREDS.md` were deleted
 in Phase 5; anything still worth keeping was carried into this file or `README.md` first.
 
@@ -535,7 +537,136 @@ Docs went last, so the README was written once against the final state.
 
 ---
 
-## 4. Known minor rot (not worth a phase)
+## 4. Chat feature (1:1 messaging) — phase plan C1–C6
+
+Agreed 2026-10-02. Goal: a viewer on a found item's details page can open a thread with the person
+who found it, with a Telegram/WhatsApp-style inbox and thread view.
+
+**Why report-scoped and not claim-scoped:** the existing claim flow is admin-mediated
+(`PENDING → APPROVED → UNDER_HANDOVER → COMPLETED`), so it cannot serve open conversation. Chat
+attaches to the **found `Report`**; the finder is always that report's owner.
+
+### Roadmap
+
+| Phase | Goal | Ships | Verify gate |
+|---|---|---|---|
+| **C1** | Schema + RLS foundation | Migrations, `schema.prisma` | Anonymous PostgREST blocked on all 4 tables |
+| **C2** | Text chat API end to end | `routers/chat.ts`, RPCs, rate-limit rework | 8-case curl matrix, no UI |
+| **C3** | Image attachments | `handleImage` options, orphan cleanup | Multipart upload + no orphaned assets |
+| **C4** | Client UI | Inbox, thread, `ReportDetail` button, badge | Headless Chrome 4 roles + live bundle grep |
+| **C5** | Moderation + admin | Block, report, transcripts, queue | Report → queue → resolve round trip |
+| **C6** | Hardening, email-leak fix, docs | Rate tuning, `README`/`status` | Full suite + live prod checklist |
+
+Each phase is independently shippable. If C5 slips you still have working chat from C4.
+
+### Locked decisions
+
+- **One image per message.** `Message.imageUrl` is a nullable column; no `MessageAttachment` table.
+- **`ConversationStatus` is exactly `PENDING | ACCEPTED | BLOCKED`.** No `CLOSED`, no reopen path
+  after a block. A finder ignoring a request just leaves it `PENDING`.
+- **Anyone logged in may open a thread**, with a request/accept inbox. The finder replies but never
+  cold-opens a thread.
+- **Polling**, with the global rate limit made route-aware. No realtime in v1.
+- **v1 scope includes** image attachments, Navbar unread badge, block + report, admin transcripts.
+- Defaults to revisit in C6: 20 messages/hour/user, 10 new threads/day/user.
+- Admin resolves/dismisses reports but does **not** delete messages.
+
+### Data model
+
+`unique (reportId, createdBy)` is the entire access model in one constraint: the finder is always
+the report's owner, so a thread is unambiguous and cannot be duplicated. Unread is derived from
+`ConversationParticipant.lastReadAt`, so the badge never depends on `Notification` (which has no link
+column and cannot deep-link to a thread anyway).
+
+### Standing rules for every phase
+
+1. **`enable row level security` ships in the same migration as `create table`.** Verified in the DB:
+   24 `pg_default_acl` rows exist, so new `public` tables automatically inherit `anon`/`authenticated`
+   grants. RLS is the only thing keeping them shut — this is precisely the original breach.
+2. **Migration filenames must match the server-assigned version** or `supabase migration list` drifts.
+   Expect to rename locally right after applying.
+3. **Never invent a config value.** The `MAIL_FROM` outage came from a guessed sender address.
+4. **Verify production directly; a green deploy proves nothing.** Grep the live bundle, curl the live
+   function. A `200` means accepted, not delivered.
+5. **Absence of an error is not success.** The SMTP bug stayed invisible for a day behind a `200`.
+6. **Never commit without asking.** Reviewable commits; push when told.
+
+### Phase detail
+
+**C1 — Schema + RLS foundation.** No application code, so the tables are provably locked down before
+any chat code exists.
+- `ALTER TYPE "NotificationType" ADD VALUE 'MESSAGE_RECEIVED'` — **alone in its own migration file**;
+  a new enum value cannot be used in the transaction that adds it.
+- `CREATE TYPE "ConversationStatus"` and `MessageReportStatus`; then `Conversation`,
+  `ConversationParticipant`, `Message`, `MessageReport` with all constraints and indexes.
+- RLS enabled on all four, plus `notify pgrst, 'reload schema'`.
+- `prisma/schema.prisma` for parity — reference only, never the runtime.
+- Gate: `supabase migration list` shows no drift · 4/4 tables `relrowsecurity` · `pg_policies` = 0 ·
+  anonymous probe with the publishable key returns nothing on every table · service_role scratch
+  insert/select/delete round trip.
+
+**C2 — Text chat API, end to end.** Full API, text only; attachments deliberately excluded to keep
+the failure surface small.
+- `routers/chat.ts` + `validators/chat.ts` (zod, mirroring `validators/claim.ts`).
+- Narrow inbox/message projections. Does **not** reuse `claimSelect`; no other participant's email in
+  any chat payload.
+- `SECURITY DEFINER` RPCs `create_conversation` and `send_message` — insert, bump `lastMessageAt`,
+  write notification, atomically, following `create_claim`'s idiom (`set search_path = public`).
+- `_shared/ratelimit.ts` made configurable: global 100/15min stays but skips `GET /api/conversations*`;
+  a dedicated 300/15min chat-read budget on the router; a **per-user send throttle keyed on `user.id`**
+  inside the router, since IP limiting is wrong for authenticated senders.
+- Gate: unauth 401 · non-participant 403 · owner-initiates 403 · self-chat 400 · initiate idempotent ·
+  blocked sender 403 · 2001-char body 400 · control chars stripped · keyset pagination stable at the
+  boundary with no dupes or gaps.
+
+**C3 — Image attachments.**
+- `handleImage` gains folder/size options defaulting to today's behaviour so report-image callers are
+  untouched. Chat uses `lost-and-found/chat/{conversationId}` and a **2MB** cap, not 5MB.
+- `send_message` accepts `imageUrl`; at least one of body/imageUrl required (DB `CHECK`).
+- **Orphan handling:** upload happens after the permission check; if the RPC insert fails,
+  `deleteImage` via `extractPublicIdFromUrl` so failed sends do not leak assets.
+- Daily new-thread cap per user lands here, not deferred to C6.
+
+**C4 — Client UI.**
+- `client/src/services/chat.js` — every API call in one module, so swapping polling for realtime
+  later touches one file.
+- `useChatPoll` — 5s thread, 20s inbox, pause on `document.hidden`, jittered backoff on 429.
+- `Messages.jsx` inbox + `Chat.jsx` thread. Tailwind; sticky header, scroll-to-bottom, composer above
+  the keyboard using `dvh` + safe-area insets. **No new dependencies.**
+- Optimistic send deduped by `clientId`, matching the unique constraint so a retry cannot duplicate.
+- `ReportDetail.jsx:159-165` — "Chat with {name}" beside "Reported By", hidden when the viewer owns
+  the report. Navbar badge reuses the existing single-shot unread fetch.
+
+**C5 — Moderation + admin.** Block, report-with-reason, visible blocked state ·
+`POST /api/conversations/:id/messages/:messageId/report` → `MessageReport` (one per reporter per
+message) · admin transcript + moderation queue + resolve/dismiss following existing `admin.ts`
+patterns and writing `AuditLog` rows. Blocked threads stay visible to admins.
+
+**C6 — Hardening, email-leak fix, docs.**
+- **Tighten the email leak.** `FULL_REPORT_SELECT` ships `report.user.email` to any authenticated
+  viewer (`selectors.ts:6,19-20`). Chat must not inherit it. ⚠️ `AdminClaims.jsx:98` and `AdminUsers`
+  depend on that email, so it needs a separate admin-scoped select — the change most likely to break a
+  working screen.
+- Review body sanitisation / control-char stripping against a stored-XSS payload.
+- Tune polling cadence and the chat-read budget against real usage, not guesswork.
+- Record the policy decision that users may exchange phone numbers and handles in message text — a
+  deliberate reversal of what the claim/handover flow mediates.
+- `README.md` + this file: architecture, threat model, moderation policy, phase checklist.
+
+### Risks
+
+| Risk | Mitigation | Where |
+|---|---|---|
+| A new table ships without RLS | RLS in the same migration file; anonymous probe is the gate | C1 |
+| Chat polling exhausts the global 100/15min IP budget | Route-aware limiter + pause on hidden tab | C2, C6 |
+| Strangers messaging strangers | Request/accept inbox, block, report, send + thread caps | C2–C5 |
+| Free Cloudinary storage abused | 2MB chat cap, one image/message, thread + send caps | C3 |
+| Email leak inherited by chat | Tighten `FULL_REPORT_SELECT` with an admin-scoped replacement | C6 |
+| Off-platform contact reopens | Recorded as an accepted policy decision, not hidden | C6 |
+
+---
+
+## 5. Known minor rot (not worth a phase)
 
 - **Dangling provenance comments.** Six comments now reference deleted files:
   `supabase/functions/api/_shared/cloudinary.ts:5` and `image.ts:7` ("Mirrors `server/src/...`"),
@@ -551,7 +682,7 @@ Docs went last, so the README was written once against the final state.
   (react-router 6, esbuild) still require `--force` → `react-router-dom@7` / `vite@8`, both major,
   so those stay deferred. **Recommended next action: run plain `npm audit fix` in `client/`.**
 
-## 5. Deliberately skipped (revisit only on hitting the ceiling)
+## 6. Deliberately skipped (revisit only on hitting the ceiling)
 
 - Migrating auth to Supabase Auth — touches every route's middleware for no gain once real email exists.
 - Docker / local Supabase stack — declined; 5 GB install and RAM pressure on an 8 GB box.
@@ -560,7 +691,7 @@ Docs went last, so the README was written once against the final state.
 
 ---
 
-## 6. Fresh-session guide
+## 7. Fresh-session guide
 
 Paste this at the start of a new session:
 

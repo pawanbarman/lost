@@ -1,0 +1,17 @@
+-- NotificationType gains a value for inbound chat messages.
+--
+-- WHY ITS OWN FILE: PostgreSQL cannot use a value added by ALTER TYPE ... ADD VALUE in the same
+-- transaction that adds it (PG12+ allows the statement, but the new label is unusable until the
+-- transaction commits). Keeping this file to a single statement means the chat tables migration can
+-- reference 'MESSAGE_RECEIVED' freely without tripping that restriction.
+--
+-- WHY chat needs its own type rather than reusing 'SYSTEM': the notifications page groups and
+-- labels by type, and 'SYSTEM' is already used for handover events (start_handover writes
+-- NotificationType 'SYSTEM'). Overloading it would make chat pings indistinguishable from handover
+-- events in that list.
+--
+-- Deliberately NOT adding a link/reference column. Deep-linking to a thread needs a conversation id
+-- that this table has nowhere to put, so unread state is derived from ConversationParticipant
+-- instead (see the C1 chat plan in status.md). This type is a coarse "you have activity" ping that
+-- routes to /messages, not to a specific thread.
+alter type "NotificationType" add value 'MESSAGE_RECEIVED';
