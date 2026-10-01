@@ -1,332 +1,293 @@
 # Lost&Found — Lost & Found Platform
 
-> **Lost something? Found something? Lost&Found helps connect the right person with the right item while protecting ownership information.**
+> **Lost something? Found something? Lost&Found connects the right person with the right item while protecting ownership information.**
 
-Lost&Found is a full-stack Lost & Found web platform featuring smart matching, ownership verification, admin moderation, event management, and a polished dark-themed UI.
-
----
-
-## Problem
-
-Every day, thousands of items are lost across campuses, offices, events, and public spaces. The traditional lost-and-found system is broken: items pile up, owners never know their item was found, and finders have no easy way to return items.
-
-## Solution
-
-LeftBehind uses a **weighted matching algorithm** to automatically connect lost items with found items. When someone reports a lost item, the system scans all found items, surfaces possible matches ranked by confidence score, and facilitates secure ownership verification before handover.
+A full-stack Lost & Found platform with automated matching, ownership verification, admin moderation, event management, and a dark-themed UI.
 
 ---
 
-## Features
-
-- **User Authentication** — Secure registration/login with JWT
-- **Lost & Found Reporting** — Detailed reports with image upload, categories, locations, and timestamps
-- **Smart Matching** — Automatic weighted matching with transparent score breakdowns (0-100%)
-- **Ownership Verification** — Private verification details only the genuine owner would know
-- **Claims System** — Submit claims, admin review, approval/rejection workflow
-- **Status Lifecycle** — Clean report status flow: LOST/FOUND → MATCHED → CLAIMED → VERIFIED → RETURNED → CLOSED
-- **Notifications** — Real-time notifications for matches, claims, and status changes
-- **Admin Dashboard** — Stats, report moderation, claim management, user management, audit logs
-- **Event Management** — Create events with QR codes for location-based lost & found
-- **Search & Filters** — Full-text search with type, category, status, location, and date filters
-- **Report Editing** — Edit your own reports with pre-filled data
-- **User Dashboard** — Overview of your reports, matches, claims, and notifications
-- **Responsive Design** — Mobile-first dark theme UI
-- **Security** — bcrypt, JWT, RBAC, rate limiting, CORS, Helmet, input validation, XSS prevention
-
----
-
-## Tech Stack
+## Stack
 
 | Layer | Technology |
 |-------|-----------|
-| Frontend | React 18, Vite, React Router 6, Tailwind CSS, Lucide Icons, Axios |
-| Backend | Node.js, Express.js |
-| Database | PostgreSQL |
-| ORM | Prisma 5 |
-| Auth | JWT (jsonwebtoken), bcryptjs |
+| Frontend | React 18, Vite 5, React Router 6, Tailwind CSS, Lucide, Axios |
+| Backend | **Supabase Edge Function** (Deno 2 + [Oak](https://jsr.io/@oak/oak) 17) |
+| Database | Supabase Postgres, accessed with `@supabase/supabase-js` (service role) |
+| Auth | Custom HS256 JWT (`jose`), bcrypt (10 rounds) |
 | Validation | Zod |
-| Uploads | Multer |
-| Security | Helmet, CORS, express-rate-limit |
+| Images | Cloudinary |
+| Email | Any SMTP relay (Brevo in production), minimal built-in client |
+| Tests | `deno test` + `@std/testing` |
+
+> **The Express/Prisma server is gone.** An earlier version of this project ran Node + Express + Prisma
+> on port 5000. It was replaced by a single Supabase Edge Function. If you are reading a doc that
+> mentions `PORT`, `CLIENT_URL`, `UPLOAD_DIR`, `npx prisma migrate dev`, or `localhost:5000`, it is
+> stale. `prisma/schema.prisma` remains only as a schema reference — **it is not the runtime ORM and
+> `prisma migrate deploy` must not be used** (see [Migrations](#migrations)).
 
 ---
 
-## System Architecture
+## Architecture
 
 ```
-┌─────────────┐     HTTP/REST     ┌──────────────────┐     Prisma     ┌────────────┐
-│  React SPA  │ ◄──────────────► │  Express Server  │ ◄────────────► │ PostgreSQL │
-│  (Vite)     │   Port 5173      │  Port 5000       │               │            │
-└─────────────┘                   └──────────────────┘               └────────────┘
-                                    │       │       │
-                                    ▼       ▼       ▼
-                                  Auth   Upload   Matching
-                                  (JWT)  (Multer) (Service)
+┌──────────────┐   HTTPS + JWT    ┌─────────────────────────┐   service role   ┌────────────┐
+│  React SPA   │ ───────────────► │  Supabase Edge Function │ ───────────────► │  Postgres  │
+│  Vercel      │   Bearer token   │  (Oak, Deno 2)          │   (BYPASSRLS)   │            │
+│  :5173 local │                  │  routers/ + _shared/    │                  └────────────┘
+└──────────────┘                  └───────────┬─────────────┘
+                                              │ optional
+                                              ▼
+                                    ┌───────────────────┐
+                                    │ Python DINOv2 ML  │
+                                    │ service (FastAPI) │
+                                    └───────────────────┘
 ```
+
+**The browser never talks to the database.** It holds no Supabase key and never calls PostgREST;
+every read and write goes through the Edge Function, which authenticates the JWT and then queries
+using `SUPABASE_SERVICE_ROLE_KEY`. This is why the deny-all RLS posture in
+[Migrations](#migrations) is safe — and why it must stay that way.
+
+### Request pipeline
+
+`errorHandler` → `applyCors` → `securityHeaders` → `rateLimit` → routers (`supabase/functions/api/index.ts`).
 
 ---
 
-## Database Architecture
+## Local development
 
-```
-User ──────┬──── Report ──────── Item
-           │       │
-           │    Match ──────── Match
-           │       │
-           │    Claim
-           │
-           ├──── Notification
-           │
-           └──── AuditLog
+There is **no local backend**. Docker is not installed, so `supabase functions serve` is unavailable.
+The client talks to the deployed Edge Function directly.
 
-Event ───── Report
-Category (standalone)
-Location (standalone)
-```
-
----
-
-## Smart Matching Algorithm
-
-The matching system uses a **weighted scoring** approach:
-
-| Factor | Weight | Method |
-|--------|--------|--------|
-| Category | 25% | Exact match (0 or 100) |
-| Keywords/Title | 25% | Jaccard word similarity |
-| Description | 20% | Jaccard word similarity |
-| Location | 20% | Jaccard location word similarity |
-| Date/Time | 10% | Time proximity decay |
-
-### Score Ranges
-
-| Score | Rating | Action |
-|-------|--------|--------|
-| 90-100 | Very Strong Match | Highlighted, high priority |
-| 75-89 | Strong Match | Prominently displayed |
-| 60-74 | Possible Match | Suggested to user |
-| 0-59 | Low Confidence | Not shown |
-
----
-
-## Ownership Verification
-
-1. **Reporter** sets private verification details (only visible to owner + admin)
-2. **Claimant** provides their own verification details
-3. **Admin** compares both sets to verify ownership
-4. **Private details are never exposed publicly**
-
----
-
-## Core User Flow
-
-```
-Register/Login → Post Lost Item → Upload Image → Category → Description
-→ Location → Save Report → Automatic Match Search → Show Matches → Notification
-→ Claim → Ownership Verification → Admin Review → Accept/Reject
-→ Handover → Item Returned → Report Closed
-```
-
----
-
-## Installation
-
-### Prerequisites
-- Node.js v18+
-- PostgreSQL v14+
-- npm
-
-### 1. Set up database
-```sql
-CREATE DATABASE leftbehind;
-```
-
-### 2. Configure environment
 ```bash
-cp .env.example .env
-# Edit .env with your database credentials and JWT secret
-```
-
-### 3. Install dependencies
-```bash
-# From project root
+# root — installs Prisma (schema reference only) and the client
 npm install
-
-# Backend
-cd server && npm install && cd ..
-
-# Frontend
 cd client && npm install && cd ..
+
+# client/.env.local
+VITE_API_URL=https://<project-ref>.supabase.co/functions/v1/api
 ```
 
-### 4. Run migrations and seed
+Then:
+
 ```bash
-npx prisma migrate dev
-cd server && npm run prisma:seed && cd ..
+npm run dev     # → http://localhost:5173
+npm run build   # → client/dist
 ```
 
-### 5. Run the application
+⚠️ **`client/.env.local` must contain `VITE_API_URL`.** If it doesn't, `axios` gets
+`baseURL: undefined` and issues *relative* requests — the SPA fallback then returns `index.html`
+with a 200, which `AuthContext.verifyToken()` will happily store as the user object, leaving
+`isAdmin` silently `undefined`. `VITE_API_URL` must also be set in the Vercel project environment;
+a local build is not deployable on its own.
+
+### Tests
+
 ```bash
-npm run dev
+cd supabase/functions/api
+
+deno check index.ts routers/*.ts _shared/*.ts tests/*.ts
+deno lint
+deno test --allow-env --allow-net --allow-read tests/ --ignore=tests/mlImageWiring.test.ts
 ```
 
-- Frontend: http://localhost:5173
-- Backend: http://localhost:5000
+`tests/mlImageWiring.test.ts` is excluded from the command above because it is timing-sensitive and
+flakes under load; run it alone when working on ML wiring.
+
+End-to-end flows against a live function register throwaway users at runtime:
+
+```bash
+deno run --allow-env --allow-net tests/flows/integration.flow.ts
+deno run --allow-env --allow-net tests/flows/image.flow.ts   # needs TEST_IMAGE
+```
 
 ---
 
-## Environment Variables
+## Environment variables
 
-| Variable | Description | Example |
-|----------|-------------|---------|
-| DATABASE_URL | PostgreSQL connection string | `postgresql://user:pass@localhost:5432/leftbehind` |
-| JWT_SECRET | Secret for JWT signing | Use a strong random string |
-| PORT | Server port | `5000` |
-| NODE_ENV | Environment | `development` or `production` |
-| CLIENT_URL | Frontend URL for CORS | `http://localhost:5173` |
-| MAX_FILE_SIZE | Max upload size in bytes | `5242880` (5MB) |
-| UPLOAD_DIR | Upload directory path | `./uploads` |
-| LEFTBEHIND_ML_SERVICE_URL | **Optional.** Internal URL of the Python ML service | `http://127.0.0.1:8001` |
-| LEFTBEHIND_ML_TIMEOUT_MS | Per-request ML timeout in ms | `5000` |
-| LEFTBEHIND_ML_MATCHING_DEADLINE_MS | Whole-run ML budget in ms | `5000` |
+Edge Function secrets (`supabase secrets set`):
 
-See `.env.example` for the full annotated list.
+| Variable | Required | Notes |
+|----------|----------|-------|
+| `SUPABASE_URL` | auto | Injected by the platform |
+| `SUPABASE_ANON_KEY` | auto | Injected by the platform |
+| `SUPABASE_SERVICE_ROLE_KEY` | ✅ | KEEP SECRET. Backend-to-DB admin client |
+| `JWT_SECRET` | ✅ | HS256 secret for session **and** reset tokens |
+| `ALLOWED_ORIGINS` | ✅ | Comma-separated browser origins |
+| `CLOUDINARY_CLOUD_NAME` / `_API_KEY` / `_API_SECRET` | ✅ for uploads | KEEP SECRET |
+| `SMTP_HOST` | for email | e.g. `smtp-relay.brevo.com` |
+| `SMTP_PORT` | for email | `587` = STARTTLS (default), `465` = implicit TLS |
+| `SMTP_USER` / `SMTP_PASS` | optional | **Both or neither.** One alone disables email |
+| `SMTP_SECURE` | for email | Inferred from port; `true` forces implicit TLS |
+| `MAIL_FROM` | for email | Verified sender, e.g. `Lost & Found <no-reply@you.com>` |
+| `APP_URL` | for email | Public origin; emailed link is `<APP_URL>/reset-password?token=…` |
+| `LEFTBEHIND_ML_SERVICE_URL` | optional | Unset ⇒ ML disabled, metadata-only matching |
+| `LEFTBEHIND_ML_TIMEOUT_MS` | optional | Default `5000` |
+| `LEFTBEHIND_ML_MATCHING_DEADLINE_MS` | optional | Whole-run budget, default `5000` |
 
----
-
-## ML Image Matching (optional)
-
-An independent Python service adds **image similarity** to the existing
-weighted matcher. It is a separate deployment and is **not required** — the
-platform matches on metadata alone without it.
-
-```
-POST /api/reports
-    ↓
-matchingService.findMatches()
-    ↓
-async rankMatches()          ← one ML budget per operation
-    ↓
-mlImageSimilarityProvider()  ← only when BOTH reports have an imageUrl
-    ↓
-getImageSimilarity()         ← LEFTBEHIND_ML_SERVICE_URL
-    ↓
-Python FastAPI  POST /predict
-    ↓
-DINOv2 (facebook/dinov2-base) → cosine similarity
-    ↓
-image_similarity ──▶ existing weighted scoring → persistence threshold
-    ↓
-create_match_and_notify RPC
-```
-
-### Required backend variables
-
-| Variable | Default | Meaning |
-|----------|---------|---------|
-| `LEFTBEHIND_ML_SERVICE_URL` | *(unset)* | Internal URL of the FastAPI service. Unset ⇒ ML disabled, no HTTP requests are made. |
-| `LEFTBEHIND_ML_TIMEOUT_MS` | `5000` | Per-request timeout. Must exceed one round trip (measured 1.2–2.5 s warm). |
-| `LEFTBEHIND_ML_MATCHING_DEADLINE_MS` | `5000` | Total budget for the image-evidence phase of one match run. Invalid values fall back to 5000. |
-
-Prototype defaults: **timeout 5000 ms, matching deadline 5000 ms, concurrency 2.**
-These are build-time constants, not env-tunable; only the three variables above
-are configurable.
-
-### What the Python service is and is not responsible for
-
-- The service is **optional and advisory**. If it is unavailable, timing out, or
-  missing entirely, `image_similarity` becomes `null` and matching degrades to
-  **metadata-only** — the existing weighted score, persistence threshold, Match
-  creation and notifications all behave exactly as they did before.
-- **The Python `final_score` is NOT used.** The Oak API reads only
-  `image_similarity` and feeds it in as one evidence field. The final score,
-  confidence and persistence decisions remain entirely the responsibility of the
-  existing TypeScript rule-based matcher.
-- **DINOv2 provides `image_similarity` only** — a cosine similarity in
-  `[-1, 1]` over 768-dimensional embeddings. It never influences the score on
-  its own; it is one field among twelve in a weighted average (weight `0.10`).
-- **Images are retrieved from Cloudinary** URLs stored on the report items. The
-  service accepts **only** allowed HTTPS Cloudinary delivery URLs: `http://`,
-  `file://`, non-Cloudinary hosts, and lookalike hosts are rejected, redirects
-  are not followed, and responses are size-capped. It has no secrets and no
-  database access.
-
-### Operational notes
-
-- ML requests run at most **2 concurrently**; every failure mode resolves to
-  `null` rather than throwing, so a broken ML service can never fail report
-  creation.
-- The whole-run deadline bounds how long report creation waits for image
-  evidence regardless of the per-request timeout.
-- Python service requirements, model caching and the production checklist:
-  [`ml-service/README.md`](ml-service/README.md).
-- No Dockerfile or hosting config is included yet; deployment of the Python
-  service is a separate step.
+`.env.example` carries the full annotated list.
 
 ---
 
-## API Overview
+## Password reset
 
-| Group | Endpoints |
-|-------|-----------|
-| Auth | `POST /register`, `POST /login`, `GET /me`, `POST /forgot-password`, `POST /reset-password` |
-| Reports | CRUD + `GET /my` + image upload |
-| Search | Full-text with type/category/status/location/date filters |
-| Matches | List, detail, update status (with auth) |
-| Claims | Create (with reportId), list, detail, admin status update |
-| Notifications | List, unread-count, mark-read, mark-all-read |
-| Admin | Dashboard stats, report moderation, user management, audit logs |
-| Events | CRUD (admin), public list |
-| Categories | CRUD (admin), public list |
+`POST /api/auth/forgot-password` emails a single-use link; `POST /api/auth/reset-password` exchanges
+the token for a new password.
+
+- The endpoint **fails closed**. If `SMTP_HOST`, `MAIL_FROM` or `APP_URL` is missing, or only one
+  half of the credential pair is set, it returns **503** and issues no token. It never returns the
+  token in the response body — the earlier implementation did, which handed an account-takeover
+  primitive to anyone who could guess an email address.
+- Reset tokens are HS256 JWTs with a `purpose` claim, TTL **30 minutes**. A session token cannot be
+  replayed as a reset token, or vice versa.
+- **No user enumeration.** Known and unknown addresses return byte-identical 200 responses.
+  Delivery failures are caught and logged server-side rather than surfaced.
+- SMTP is mandatory-upgraded: unless `SMTP_SECURE` is on, the client refuses to `AUTH` unless the
+  server advertises `STARTTLS`. It also passes the hostname to `Deno.startTls` — without that,
+  certificate verification fails against a real relay, because Deno would derive the TLS servername
+  from the socket's peer IP.
+
+---
+
+## Matching
+
+A weighted scorer over 12 evidence fields (`matching/featureExtractor.ts`):
+
+| Field | Weight | | Field | Weight |
+|-------|-----------|-|-------|-----------|
+| Unique features | 0.18 | | Category | 0.12 |
+| Model | 0.15 | | Image (ML) | 0.10 |
+| Brand | 0.10 | | Title | 0.08 |
+| Color | 0.08 | | Description | 0.06 |
+| Size | 0.04 | | Location | 0.04 |
+| Condition | 0.03 | | Time | 0.02 |
+
+Thresholds (`matching/ruleBasedMatcher.ts`): `CONTRADICTION_FACTOR 0.5`,
+`CONFIDENCE_THRESHOLDS {high: 0.7, medium: 0.4}`, `STRONG_MATCH 0.9`, `PARTIAL_MATCH 0.4`.
+Fields are renormalised by the weight of the evidence actually available, so a sparse record is not
+penalised for missing fields, and thin evidence is scaled down by `coverage`.
+
+The optional Python service adds a `image_similarity` field and nothing more — see
+[`ml-service/README.md`](ml-service/README.md). If it is absent or times out, `image_similarity`
+becomes `null` and matching degrades to metadata-only. Every failure mode resolves to `null` rather
+than throwing, so a broken ML service can never fail report creation.
+
+---
+
+## API
+
+Base: `<function-url>` (both `/health` and `/api/health` respond).
+
+| Group | Prefix | Endpoints |
+|-------|--------|-----------|
+| Auth | `/api/auth` | `POST /register`, `POST /login`, `GET /me`, `POST /forgot-password`, `POST /reset-password` |
+| Reports | `/api/reports` | `POST /`, `GET /`, `GET /my`, `GET /:id`, `PUT /:id`, `DELETE /:id`, `GET /:id/matches` |
+| Search | `/api/search` | `GET /` — `q`, `type`, `category`, `location`, `startDate`, `endDate`, `status`, `sort` |
+| Found feed | `/api/found-feed` | `GET /` — `page`, `limit`, `sort`, `communityId`, `q`, `category`, `color`, `brand`, `location`, `dateFrom`, `dateTo`, `status` |
+| Matches | `/api/matches` | `GET /`, `GET /:id`, `PUT /:id/status` |
+| Claims | `/api/claims` | `POST /`, `GET /`, `GET /:id`, `PUT /:id/status`, `PUT /:id/handover` |
+| Notifications | `/api/notifications` | `GET /`, `GET /unread-count`, `PUT /:id/read`, `PUT /read-all` |
+| Categories | `/api/categories` | `GET /`, `POST /`, `DELETE /:id` |
+| Communities | `/api/communities` | `GET /`, `POST /` |
+| Events | `/api/events` | `GET /`, `GET /:id`, `POST /`, `PUT /:id`, `DELETE /:id` |
+| Admin | `/api/admin` | `GET /dashboard`, `GET /reports`, `GET /reports/flagged`, `PUT /reports/:id/status`, `PUT /reports/:id/flag`, `PUT /reports/:id/unflag`, `GET /users`, `PUT /users/:id/role`, `GET /audit-logs` |
+
+---
+
+## Database
+
+10 tables: `User`, `Item`, `Report`, `Match`, `Claim`, `Notification`, `AuditLog`, `Category`,
+`Community`, `Event`.
+
+```
+User ──┬── Report ── Item
+       │      └── Match ── Match
+       │      └── Claim
+       ├── Notification
+       └── AuditLog
+
+Event, Community, Category ── referenced by Report
+```
+
+### Migrations
+
+History lives in `supabase_migrations.schema_migrations`; files are in `supabase/migrations/`.
+
+> **Use the Supabase CLI or MCP `supabase_apply_migration` — never `prisma migrate deploy`.**
+> There is no `_prisma_migrations` table. Prisma would read an empty history and try to replay
+> `prisma/migrations/` from scratch, which still contains `CREATE TABLE "Location"` for a table that
+> no longer exists.
+
+> ⚠️ **After applying a migration, run `supabase migration list` and rename the file to the version
+> the server actually recorded.** `supabase_apply_migration` assigns its own version, which may
+> differ from the timestamp you wrote in the filename. A mismatch makes the next `db push` re-run
+> an already-applied migration.
+
+**All 10 tables have RLS enabled with zero policies — deny-all, and it is intentional.** This is not
+an oversight and must not be "fixed" with permissive policies: the browser holds no database
+credentials, and `service_role` bypasses RLS, so the Edge Function is unaffected. Adding a policy
+would re-open direct PostgREST access with the *publishable* key, which is public by design. That is
+not hypothetical — RLS was found disabled on all 10 tables, which exposed every user's bcrypt
+`passwordHash` and allowed inserting a `User` with `role='ADMIN'`. See `status.md` §3c.
+
+---
+
+## Security
+
+- **Passwords** — bcrypt, 10 rounds
+- **Sessions** — HS256 JWT, 7-day expiry
+- **Reset tokens** — separate `purpose` claim, 30-minute TTL, single deliverable
+- **RBAC** — admin routes re-checked server-side; the client-side `RequireAdmin` is UX, not security
+- **Ownership** — users may only modify their own reports/matches/claims
+- **Validation** — Zod schemas on all create/update endpoints
+- **Uploads** — JPEG/PNG/WEBP, size-capped, Cloudinary-hosted
+- **Rate limiting** — 100 requests / 15 min / IP (in-memory; per-worker, best-effort across workers)
+- **Headers** — `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`
+- **CORS** — explicit origin allow-list via `ALLOWED_ORIGINS`; unknown origins get no header
+- **SQL injection** — the Supabase client parameterises; RPCs are used for atomic multi-row writes
+- **CRLF injection** — SMTP envelope addresses reject embedded line breaks *before* parsing
+- **Errors** — no stack traces in responses
+
+`npm audit` currently reports 5 advisories (2 high, 3 moderate) in `client/`:
+
+- **axios — high, and the only one worth acting on.** A batch of advisories affects
+  `axios <= 1.19.0`, including prototype-pollution gadgets and redirect-based SSRF via
+  `maxRedirects: 0` not being enforced. **A non-breaking fix exists**: `npm audit fix` moves
+  `1.19.0 → 1.20.0` inside the already-declared `^1.6.2` range.
+- **react-router 6 / esbuild — moderate, both dev-time or upgrade-gated.** Fixing them needs
+  `npm audit fix --force`, which installs `react-router-dom@7` (major) and `vite@8` (major).
+  Not worth it unprompted.
 
 ---
 
 ## Deployment
 
-- **Frontend**: https://lost-found-client.vercel.app (Vercel; `VITE_API_URL` points at the Edge Function).
-- **Backend**: Supabase Edge Function `api` → `https://cuhngnehtlswsdemsdpr.supabase.co/functions/v1/api` (deploy-verified 2026-09-25: health 200, CORS from `localhost:5173` + Vercel origin, register/login and forgot/reset-password round-trips green).
-- **Password reset**: `POST /api/auth/forgot-password` returns a short-lived reset token directly in the JSON response (no email delivery yet); `POST /api/auth/reset-password` exchanges that token for a new password.
-- **ML image service (optional)**: separate Python deployment, currently *not*
-  deployed. Leaving `LEFTBEHIND_ML_SERVICE_URL` unset is a fully supported
-  configuration — matching runs metadata-only. See
-  [ML Image Matching](#ml-image-matching-optional).
+**Backend** — Supabase Edge Function `api`:
 
-## Security Features
+```bash
+supabase functions deploy api
+```
 
-- **Password hashing** with bcrypt (10 rounds)
-- **JWT authentication** with 7-day expiry
-- **RBAC** — Admin-only endpoints protected server-side
-- **Ownership checks** — Users can only modify their own reports/matches
-- **Input validation** — Zod schemas on all create/update endpoints
-- **File upload validation** — Type (JPEG/PNG/WEBP) and size (5MB) limits
-- **Rate limiting** — 100 requests per 15 minutes per IP
-- **Security headers** — Helmet
-- **CORS** — Configured for frontend origin only
-- **SQL injection prevention** — Prisma ORM parameterized queries
-- **Private details protection** — Never exposed publicly
-- **Error handling** — No stack traces in production
+JWT verification is **disabled for this function** (`--no-verify-jwt`), because the app issues its
+own JWTs with `JWT_SECRET` and the platform's gateway cannot verify them. This is safe only because
+every private route re-validates the token in `_shared/jwt.ts`; do not add routes that assume the
+gateway already checked it.
+
+**Frontend** — Vercel, from `client/`. `client/vercel.json` rewrites all paths to `index.html` for
+client-side routing. `VITE_API_URL` must be set in the project environment.
 
 ---
 
-## Known Limitations
+## Known limitations
 
-- No real-time WebSocket notifications (uses polling)
-- No AI/image-based matching (rule-based only)
-- No email or push notifications
-- No map-based location visualization
+- No WebSockets — notifications poll
+- No push notifications
+- No map-based location view
 - No mobile app
-
-## Future Scope
-
-- AI/ML image similarity matching
-- OCR for text recognition in images
-- GPS/map-based location matching
-- Email and push notifications
-- Mobile application
-- Multi-organization support
-- Fraud detection system
-- Advanced analytics dashboard
-
----
+- ML image matching is optional and not deployed
+- Rate limiting is per-worker and in-memory, so it resets on cold start
+- `client/.env.local` and `AuthContext` payload validation are open issues — see
+  [Local development](#local-development)
 
 ## License
 
