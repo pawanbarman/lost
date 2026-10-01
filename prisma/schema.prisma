@@ -232,9 +232,3 @@ model Category {
   name      String   @unique
   createdAt DateTime @default(now())
 }
-
-model Location {
-  id        String   @id @default(uuid())
-  name      String   @unique
-  createdAt DateTime @default(now())
-}
