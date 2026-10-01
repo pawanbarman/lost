@@ -14,6 +14,7 @@ import categoriesRouter from "./routers/categories.ts";
 import communitiesRouter from "./routers/communities.ts";
 import searchRouter from "./routers/search.ts";
 import foundFeedRouter from "./routers/foundFeed.ts";
+import chatRouter from "./routers/chat.ts";
 
 const app = new Application<State>();
 
@@ -49,5 +50,6 @@ mount(categoriesRouter);
 mount(communitiesRouter);
 mount(searchRouter);
 mount(foundFeedRouter);
+mount(chatRouter);
 
 Deno.serve((request) => app.handle(request).then((res) => res ?? new Response(null, { status: 500 })));

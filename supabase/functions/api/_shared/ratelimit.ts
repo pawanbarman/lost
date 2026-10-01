@@ -7,7 +7,12 @@ import type { Middleware } from "oak";
 const WINDOW_MS = 15 * 60 * 1000;
 const MAX_REQUESTS = 100;
 
+// Chat-specific budgets (per IP) for reads; sends are throttled per user inside the router.
+const CHAT_READ_WINDOW_MS = 15 * 60 * 1000;
+const CHAT_READ_MAX_REQUESTS = 300;
+
 const buckets = new Map<string, number[]>();
+const chatReadBuckets = new Map<string, number[]>();
 
 function clientIp(ctx: { request: { headers: Headers; ip?: string } }): string {
   const forwarded = ctx.request.headers.get("x-forwarded-for");
@@ -18,10 +23,34 @@ function clientIp(ctx: { request: { headers: Headers; ip?: string } }): string {
   return ctx.request.ip ?? "unknown";
 }
 
+function isChatReadPath(path: string): boolean {
+  return path.startsWith("/api/conversations") && path.includes("/messages")
+    ? true
+    : path === "/api/conversations"
+    ? true
+    : path === "/api/conversations/unread-count"
+    ? true
+    : false;
+}
+
 export function rateLimit(): Middleware {
   return async (ctx, next) => {
     const ip = clientIp(ctx);
     const now = Date.now();
+    const path = ctx.request.url.pathname;
+
+    if (isChatReadPath(path)) {
+      const hits = (chatReadBuckets.get(ip) ?? []).filter((t) => now - t < CHAT_READ_WINDOW_MS);
+      if (hits.length >= CHAT_READ_MAX_REQUESTS) {
+        ctx.response.status = 429;
+        ctx.response.body = { error: "Too many requests, please try again later." };
+        return;
+      }
+      hits.push(now);
+      chatReadBuckets.set(ip, hits);
+      await next();
+      return;
+    }
 
     const hits = (buckets.get(ip) ?? []).filter((t) => now - t < WINDOW_MS);
 
