@@ -14,7 +14,7 @@ in Phase 5; anything still worth keeping was carried into this file or `README.m
 
 ### Done & verified
 
-**Phase 3b — Password reset over SMTP** ✅ *live, `api` v7* (see §3)
+**Phase 3b — Password reset over SMTP** ✅ *live, `api` v9* (see §3)
 **Phase 3c — Public-database lockdown** ✅ *RLS deny-all on all 10 tables* (see §3)
 **Phase 4 — Client route guards + 404** ✅ *verified in headless Chrome* (see §3)
 **Phase 5 — Docs** ✅ *README rewritten, stale handoff docs deleted* (see §3)
@@ -290,7 +290,7 @@ current secrets are `ALLOWED_ORIGINS`, `CLOUDINARY_*` (3), `JWT_SECRET`, `SUPABA
 
 Then re-probe `forgot-password` for a registered address: **200** with the generic body means live.
 
-**✅ SMTP IS NOW LIVE — Brevo, verified working 2026-10-01, `api` v7.** Secrets set:
+**✅ SMTP IS NOW LIVE — Brevo, verified working 2026-10-01, `api` v9.** Secrets set:
 `SMTP_HOST=smtp-relay.brevo.com`, `SMTP_PORT=587`, `SMTP_USER` + `SMTP_PASS` (Brevo SMTP key),
 `MAIL_FROM` (Brevo sender), `APP_URL=https://lost-found-client.vercel.app`.
 
@@ -479,9 +479,21 @@ Docs went last, so the README was written once against the final state.
 - Edge secrets: SMTP block set in Phase 3b. `ALLOWED_ORIGINS` was already set and verified working:
   `https://lost-found-client.vercel.app` and `http://localhost:5173` both return
   `Access-Control-Allow-Origin`, while `https://evil.example.com` gets **no** header.
-- **Still outstanding, and it is a deployment, not a doc task:** the client changes from Phase 4 are
-  committed nowhere yet and have **not** been redeployed to Vercel. Production still serves the
-  pre-Phase-4 bundle. Push, then confirm via the Vercel Root Directory note below.
+- **Deployed 2026-10-02, both halves.** Committed as 5 commits on `master` (`7c98ea1` SMTP,
+  `48ecb86` RLS, `df24d22` Location drop, `1331952` route guards, `b9bc66b` docs) and pushed.
+  - `api` is live as **v9**, `ACTIVE`, `verify_jwt=false`. Deployed with an explicit
+    `--no-verify-jwt`: there is no `verify_jwt` key in `supabase/config.toml`, so relying on the
+    CLI default risks flipping gateway verification back to `true`, which would break every
+    request because the app uses its own `JWT_SECRET` rather than a Supabase JWT.
+  - The client is **live**, not just pushed. Verified the deployed bundle rather than trusting the
+    deploy: `https://lost-found-client.vercel.app/assets/index-DM8lTXg8.js` contains the new 404
+    page copy and all four `/admin/*` paths. The admin paths are the real proof — before the
+    unterminated-JSX-comment fix, `App.jsx` had no admin routes at all, so they could not have been
+    in the bundle. No stub URL is baked in.
+  - Live checks against the deployed function: `/health` 200 · `/categories` 200 with 9 rows (proves
+    the service-role path survives deny-all RLS) · `GET /auth/me` with no token → 401 ·
+    `forgot-password` for a known and an unknown email both → byte-identical 200 · CRLF in the email
+    field → 400. Database re-confirmed: 10/10 tables `relrowsecurity`, 0 policies.
 - `deno check` clean · `deno test` **21 passed (121 steps)** excluding the known `mlImageWiring`
   flake · `npm run build` clean (1449 modules).
 - Full verification: `deno check` · `deno test` (64 steps) · integration flow (86 checks) against the
