@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { Menu, X, Search, Bell, User, LogOut, Shield } from 'lucide-react';
+import { Search, User, LogOut, Bell, MessageCircle, Shield } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api from '../utils/api';
 
@@ -8,12 +8,14 @@ const Navbar = () => {
   const { user, isAuthenticated, logout, isAdmin } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [chatUnread, setChatUnread] = useState(0);
   const navigate = useNavigate();
   const location = useLocation();
 
   useEffect(() => {
     if (isAuthenticated) {
       fetchUnreadCount();
+      fetchChatUnread();
     }
   }, [isAuthenticated]);
 
@@ -23,6 +25,15 @@ const Navbar = () => {
       setUnreadCount(response.data.count);
     } catch (error) {
       console.error('Failed to fetch notifications');
+    }
+  };
+
+  const fetchChatUnread = async () => {
+    try {
+      const response = await api.get('/conversations/unread-count');
+      setChatUnread(response.data.count);
+    } catch (error) {
+      // ignore
     }
   };
 
@@ -44,7 +55,8 @@ const Navbar = () => {
       { name: 'Found Items', path: '/found-feed' },
       { name: 'My Reports', path: '/my-reports' },
       { name: 'Matches', path: '/matches' },
-      { name: 'Claims', path: '/claims' }
+      { name: 'Claims', path: '/claims' },
+      { name: 'Messages', path: '/conversations' }
     );
 
     if (isAdmin) {
@@ -83,6 +95,17 @@ const Navbar = () => {
 
             {isAuthenticated && (
               <>
+                <Link
+                  to="/conversations"
+                  className="relative p-2 rounded-full hover:bg-white/5 text-gray-300 hover:text-white transition-colors"
+                >
+                  <MessageCircle className="h-5 w-5" />
+                  {chatUnread > 0 && (
+                    <span className="absolute top-0 right-0 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
+                      {chatUnread}
+                    </span>
+                  )}
+                </Link>
                 <Link
                   to="/notifications"
                   className="relative p-2 rounded-full hover:bg-white/5 text-gray-300 hover:text-white transition-colors"
@@ -180,6 +203,13 @@ const Navbar = () => {
 
             {isAuthenticated && (
               <>
+                <Link
+                  to="/conversations"
+                  onClick={() => setIsOpen(false)}
+                  className="block px-3 py-2 rounded-md text-base font-medium text-gray-300 hover:bg-white/5 hover:text-white"
+                >
+                  Messages {chatUnread > 0 && `(${chatUnread})`}
+                </Link>
                 <Link
                   to="/notifications"
                   onClick={() => setIsOpen(false)}

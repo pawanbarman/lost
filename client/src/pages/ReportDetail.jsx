@@ -28,7 +28,6 @@ const ReportDetail = () => {
 
   const handleDelete = async () => {
     if (!confirm('Are you sure you want to delete this report?')) return;
-    
     try {
       await api.delete(`/reports/${id}`);
       navigate('/my-reports');
@@ -102,8 +101,16 @@ const ReportDetail = () => {
               </div>
             </div>
 
-            {(isOwner || isAdmin) && (
+            {(isOwner || isAdmin || (isAuthenticated && !isOwner)) && (
               <div className="flex gap-2">
+                {isAuthenticated && !isOwner && (
+                  <button
+                    onClick={handleMessage}
+                    className="px-3 py-2 bg-sky-500/20 text-sky-300 border border-sky-400/30 rounded-lg hover:bg-sky-500/30 transition-colors text-sm"
+                  >
+                    Message
+                  </button>
+                )}
                 {isOwner && (
                   <>
                     <button

@@ -30,8 +30,9 @@ import ClaimSubmit from './pages/ClaimSubmit';
 import About from './pages/About';
 import Contact from './pages/Contact';
 import Privacy from './pages/Privacy';
-import Terms from './pages/Terms';
 import NotFound from './pages/NotFound';
+import Conversations from './pages/Conversations';
+import ConversationThread from './pages/ConversationThread';
 
 /**
  * Route access is declared here rather than inside each page.
@@ -80,6 +81,8 @@ function App() {
             <Route path="/claims" element={<RequireAuth><Claims /></RequireAuth>} />
             <Route path="/claims/new" element={<RequireAuth><ClaimSubmit /></RequireAuth>} />
             <Route path="/notifications" element={<RequireAuth><Notifications /></RequireAuth>} />
+            <Route path="/conversations" element={<RequireAuth><Conversations /></RequireAuth>} />
+            <Route path="/conversations/:id" element={<RequireAuth><ConversationThread /></RequireAuth>} />
             <Route path="/profile" element={<RequireAuth><Profile /></RequireAuth>} />
 
             {/* Admins only — RequireAuth inside so logged-out users get /login. RequireAuth wraps RequireAdmin so a logged-out visitor lands on the login page. */}
