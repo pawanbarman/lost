@@ -4,7 +4,9 @@ import { db } from "../_shared/db.ts";
 import { ApiError } from "../_shared/error.ts";
 import { validate } from "../_shared/validate.ts";
 import { rpcCall } from "../_shared/rpc.ts";
-import { readJson } from "../_shared/body.ts";
+import { readJson, readFormData, strField, fileField } from "../_shared/body.ts";
+import { handleImage, CHAT_MAX_FILE_SIZE } from "../_shared/image.ts";
+import { extractPublicIdFromUrl, deleteImage } from "../_shared/cloudinary.ts";
 import {
   createConversationSchema,
   reportMessageSchema,
@@ -13,7 +15,10 @@ import {
 
 const SEND_WINDOW_MS = 60 * 60 * 1000;
 const SEND_MAX_PER_HOUR = 20;
+const THREAD_WINDOW_MS = 24 * 60 * 60 * 1000;
+const THREAD_MAX_PER_DAY = 10;
 const sendBuckets = new Map<string, number[]>();
+const threadBuckets = new Map<string, number[]>();
 
 const router = new Router();
 const routerPrefix = "/api/conversations";
