@@ -24,6 +24,7 @@ import AdminReports from './pages/AdminReports';
 import AdminClaims from './pages/AdminClaims';
 import AdminUsers from './pages/AdminUsers';
 import AdminEvents from './pages/AdminEvents';
+import AdminChatReports from './pages/AdminChatReports';
 import ReportDetail from './pages/ReportDetail';
 import ReportEdit from './pages/ReportEdit';
 import ClaimSubmit from './pages/ClaimSubmit';
@@ -91,6 +92,7 @@ function App() {
             <Route path="/admin/claims" element={<RequireAuth><RequireAdmin><AdminClaims /></RequireAdmin></RequireAuth>} />
             <Route path="/admin/users" element={<RequireAuth><RequireAdmin><AdminUsers /></RequireAdmin></RequireAuth>} />
             <Route path="/admin/events" element={<RequireAuth><RequireAdmin><AdminEvents /></RequireAdmin></RequireAuth>} />
+            <Route path="/admin/chat-reports" element={<RequireAuth><RequireAdmin><AdminChatReports /></RequireAdmin></RequireAuth>} />
 
             {/* Old dashboard aliases kept working */}
             <Route path="/home" element={<Navigate to="/" replace />} />
