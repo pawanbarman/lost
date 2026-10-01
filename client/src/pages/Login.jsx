@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { LogIn } from 'lucide-react';
 
@@ -10,8 +10,12 @@ const Login = () => {
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
+  const { login, isAuthenticated, loading: authLoading } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // Where RequireAuth bounced the user from, if anywhere.
+  const redirectTo = location.state?.from?.pathname || '/';
 
   const handleChange = (e) => {
     setFormData({
@@ -27,13 +31,18 @@ const Login = () => {
 
     try {
       await login(formData.email, formData.password);
-      navigate('/');
+      navigate(redirectTo, { replace: true });
     } catch (err) {
       setError(err.response?.data?.error || 'Login failed. Please try again.');
     } finally {
       setLoading(false);
     }
   };
+
+  // Already signed in? Don't show the form at all. Waiting on authLoading avoids
+  // bouncing someone to / who has a valid session but hasn't finished /auth/me yet.
+  if (authLoading) return null;
+  if (isAuthenticated) return <Navigate to={redirectTo} replace />;
 
   return (
     <div className="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">

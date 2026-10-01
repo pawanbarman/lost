@@ -11,18 +11,10 @@ const AdminDashboard = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!isAuthenticated) {
-      navigate('/login');
-      return;
+    if (isAuthenticated && isAdmin) {
+      fetchStats();
     }
-
-    if (!isAdmin) {
-      navigate('/');
-      return;
-    }
-
-    fetchStats();
-  }, [isAuthenticated, isAdmin, navigate]);
+  }, [isAuthenticated, isAdmin]);
 
   const fetchStats = async () => {
     try {

@@ -14,12 +14,10 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!isAuthenticated) {
-      navigate('/login');
-      return;
+    if (isAuthenticated) {
+      fetchDashboard();
     }
-    fetchDashboard();
-  }, [isAuthenticated, navigate]);
+  }, [isAuthenticated]);
 
   const fetchDashboard = async () => {
     try {

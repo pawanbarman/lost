@@ -27,13 +27,11 @@ const ReportEdit = () => {
   const [categories, setCategories] = useState([]);
 
   useEffect(() => {
-    if (!isAuthenticated) {
-      navigate('/login');
-      return;
+    if (isAuthenticated) {
+      fetchReport();
+      fetchCategories();
     }
-    fetchReport();
-    fetchCategories();
-  }, [isAuthenticated, id, navigate]);
+  }, [isAuthenticated, id]);
 
   const fetchReport = async () => {
     try {

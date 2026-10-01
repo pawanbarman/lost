@@ -7,7 +7,7 @@ const ForgotPassword = () => {
   const [email, setEmail] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [resetData, setResetData] = useState(null);
+  const [sent, setSent] = useState(false);
   const { forgotPassword } = useAuth();
 
   const handleSubmit = async (e) => {
@@ -16,11 +16,8 @@ const ForgotPassword = () => {
     setLoading(true);
 
     try {
-      const data = await forgotPassword(email);
-      // The reset token is returned in the response — there is no email transport in
-      // this stack yet, so the token is the deliverable. In production this response is
-      // replaced by a real emailed link (see the phase-5 email seam in the README).
-      setResetData(data);
+      await forgotPassword(email);
+      setSent(true);
     } catch (err) {
       setError(err.response?.data?.error || 'Something went wrong. Please try again.');
     } finally {
@@ -28,7 +25,7 @@ const ForgotPassword = () => {
     }
   };
 
-  if (resetData) {
+  if (sent) {
     return (
       <div className="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-md w-full">
@@ -38,27 +35,33 @@ const ForgotPassword = () => {
             </div>
             <h2 className="text-3xl font-bold text-white">Check your inbox</h2>
             <p className="mt-2 text-gray-400">
-              If that email is registered, a one-time reset token has been issued.
+              If that email is registered, a password reset link is on its way. The link expires
+              in 30 minutes.
             </p>
           </div>
 
           <div className="mt-8">
             <Link
-              to={`/reset-password?token=${encodeURIComponent(resetData.resetToken ?? '')}`}
+              to="/login"
               className="inline-flex justify-center w-full py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-sky-950 bg-sky-400 hover:bg-sky-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-sky-500"
             >
-              Continue to reset
+              Back to sign in
             </Link>
           </div>
 
           <div className="mt-6 text-center">
             <p className="text-xs text-gray-500">
-              In production this token would be emailed to you. Without email transport in
-              this stack, the deliverable is surfaced as a raw token for development and
-              integration testing. Forgot it?{' '}
-              <Link to="/forgot-password" className="text-sky-400 hover:text-sky-300">
-                Start over
-              </Link>
+              Wrong address, or nothing arrived?{' '}
+              <button
+                type="button"
+                onClick={() => {
+                  setSent(false);
+                  setEmail('');
+                }}
+                className="text-sky-400 hover:text-sky-300"
+              >
+                Try again
+              </button>
             </p>
           </div>
         </div>

@@ -15,15 +15,10 @@ const ClaimSubmit = () => {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    if (!isAuthenticated) {
-      navigate('/login');
-      return;
-    }
-
-    if (matchId) {
+    if (isAuthenticated && matchId) {
       fetchMatch();
     }
-  }, [isAuthenticated, matchId, navigate]);
+  }, [isAuthenticated, matchId]);
 
   const fetchMatch = async () => {
     try {

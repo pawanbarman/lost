@@ -33,15 +33,12 @@ const ReportLost = () => {
   const [communities, setCommunities] = useState([]);
 
   React.useEffect(() => {
-    if (!isAuthenticated) {
-      navigate('/login');
-      return;
+    if (isAuthenticated) {
+      fetchEvents();
+      fetchCategories();
+      fetchCommunities();
     }
-
-    fetchEvents();
-    fetchCategories();
-    fetchCommunities();
-  }, [isAuthenticated, navigate]);
+  }, [isAuthenticated]);
 
   const fetchCommunities = async () => {
     try {
