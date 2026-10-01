@@ -295,7 +295,9 @@ Then re-probe `forgot-password` for a registered address: **200** with the gener
 `MAIL_FROM="Lost & Found <r21002774@gmail.com>"`, `APP_URL=https://lost-found-client.vercel.app`.
 
 Live result: `forgot-password` returns **200** for a registered address, byte-identical to an
-unregistered one — no `token`, no JWT, no enumeration. Reset email confirmed received by the owner.
+unregistered one — no `token`, no JWT, no enumeration. **Verified end to end by the owner on
+2026-10-02:** reset email received, link opened, new password set, and login with that new password
+succeeded. The emailed `?token=` link resolves correctly.
 
 🐛 **A fourth real bug: a bad `MAIL_FROM` that every test could not catch.**
 The sender was initially set to a *guessed* relay address
