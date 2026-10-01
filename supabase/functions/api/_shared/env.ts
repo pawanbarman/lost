@@ -10,7 +10,6 @@ export const env = {
   cloudinaryCloudName: key("CLOUDINARY_CLOUD_NAME"),
   cloudinaryApiKey: key("CLOUDINARY_API_KEY"),
   cloudinaryApiSecret: key("CLOUDINARY_API_SECRET"),
-  nodeEnv: key("NA", "development"),
   maxFileSize: Number(key("MAX_FILE_SIZE", String(5 * 1024 * 1024))),
   allowedOrigins: key(
     "ALLOWED_ORIGINS",

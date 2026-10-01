@@ -4,11 +4,8 @@ import { readJson } from "../_shared/body.ts";
 import { validate } from "../_shared/validate.ts";
 import { authenticate } from "../_shared/auth.ts";
 import { generateToken } from "../_shared/jwt.ts";
-import {
-  generateResetToken,
-  verifyResetToken,
-  RESET_TTL_SECONDS,
-} from "../_shared/jwt.ts";
+import { generateResetToken, verifyResetToken } from "../_shared/jwt.ts";
+import { isEmailConfigured, sendPasswordReset } from "../_shared/email.ts";
 import {
   registerSchema,
   loginSchema,
@@ -108,29 +105,34 @@ router.get("/me", authenticate, async (ctx) => {
 router.post("/forgot-password", async (ctx) => {
   const validatedData = validate(forgotPasswordSchema, await readJson<unknown>(ctx));
 
-  // Always 200 whether or not the account exists, to avoid leaking which emails are
-  // registered. The reset token (short-lived, purpose-scoped JWT) is returned in the
-  // response body because there is no email transport in this stack yet — a genuine
-  // delivery seam is documented in README for the phase-5 hardening step.
-  const { data: user, error } = await db()
-    .from("User")
-    .select("id")
-    .eq("email", validatedData.email)
-    .maybeSingle();
-  if (error) throw error;
-
-  if (!user) {
+  // Fail closed before any token exists. Without a delivery channel the only way to
+  // hand the token back is in this response body, which lets anyone who knows a
+  // registered email take over that account. Refuse instead of leaking.
+  if (!isEmailConfigured()) {
+    ctx.response.status = 503;
     ctx.response.body = {
-      message: "If that email is registered, a password reset token will be sent.",
+      error: "Password reset is unavailable. Please contact support.",
     };
     return;
   }
 
-  const resetToken = await generateResetToken(user.id);
+  const { data: user, error } = await db()
+    .from("User")
+    .select("id,email")
+    .eq("email", validatedData.email)
+    .maybeSingle();
+  if (error) throw error;
+
+  if (user) {
+    const resetToken = await generateResetToken(user.id);
+    const delivered = await sendPasswordReset(user.email ?? validatedData.email, resetToken);
+    if (!delivered) {
+      console.error("[Auth] password reset email not delivered for user", user.id);
+    }
+  }
+
   ctx.response.body = {
-    message: "Password reset token generated.",
-    resetToken,
-    expiresInSeconds: RESET_TTL_SECONDS,
+    message: "If that email is registered, a password reset link has been sent.",
   };
 });
 
