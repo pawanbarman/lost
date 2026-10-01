@@ -14,7 +14,7 @@ in Phase 5; anything still worth keeping was carried into this file or `README.m
 
 ### Done & verified
 
-**Phase 3b — Password reset over SMTP** ✅ *live, `api` v9* (see §3)
+**Phase 3b — Password reset over SMTP** ✅ *delivery confirmed, `api` v10* (see §3)
 **Phase 3c — Public-database lockdown** ✅ *RLS deny-all on all 10 tables* (see §3)
 **Phase 4 — Client route guards + 404** ✅ *verified in headless Chrome* (see §3)
 **Phase 5 — Docs** ✅ *README rewritten, stale handoff docs deleted* (see §3)
@@ -290,12 +290,32 @@ current secrets are `ALLOWED_ORIGINS`, `CLOUDINARY_*` (3), `JWT_SECRET`, `SUPABA
 
 Then re-probe `forgot-password` for a registered address: **200** with the generic body means live.
 
-**✅ SMTP IS NOW LIVE — Brevo, verified working 2026-10-01, `api` v9.** Secrets set:
+**✅ SMTP IS LIVE — Brevo, delivery confirmed 2026-10-02, `api` v10.** Secrets set:
 `SMTP_HOST=smtp-relay.brevo.com`, `SMTP_PORT=587`, `SMTP_USER` + `SMTP_PASS` (Brevo SMTP key),
-`MAIL_FROM` (Brevo sender), `APP_URL=https://lost-found-client.vercel.app`.
+`MAIL_FROM="Lost & Found <r21002774@gmail.com>"`, `APP_URL=https://lost-found-client.vercel.app`.
 
-Live result: `forgot-password` now returns **200** for a registered address, and the response is
-byte-identical to an unregistered one — no `token`, no JWT, no enumeration.
+Live result: `forgot-password` returns **200** for a registered address, byte-identical to an
+unregistered one — no `token`, no JWT, no enumeration. Reset email confirmed received by the owner.
+
+🐛 **A fourth real bug: a bad `MAIL_FROM` that every test could not catch.**
+The sender was initially set to a *guessed* relay address
+(`noreply@breevo-de98c6ffef5c0c21e5700a56.mailer.brevo.com`) because no verified sender had been
+confirmed with the owner. Brevo's relay is permissive at the envelope stage: `MAIL FROM` returned
+`250`, the body was accepted with a final `250`, `sendMail` resolved, and the endpoint returned the
+generic `200` — so everything looked healthy and **no email was ever delivered**. It was dropped
+after SMTP acceptance, most likely for want of an authenticated sending domain.
+
+The detection rule that mattered: **absence of `[Email] reset delivery failed` proves Brevo accepted
+the message, not that it was delivered.** Those are different claims. SMTP acceptance was confirmed
+repeatedly while delivery was broken for a day.
+
+Fixed by setting a verified sender (`r21002774@gmail.com`, `api` v10). Worth remembering when
+touching SMTP config again: never invent a sender address, and check the Brevo *Transactional →
+Email log* for a per-message verdict rather than trusting an HTTP 200.
+
+⚠️ **Still open:** only the success path of `sendMail` is unobservable in our logs — a post-acceptance
+drop logs nothing. Consider logging the final SMTP response code and Brevo's message-id (neither is
+sensitive). This is why the above took ~20 tool calls to find.
 
 🐛 **A third real bug, found only by probing the live relay — not by any test.**
 `Deno.startTls(conn)` with no options derives the TLS servername from the socket's *peer IP*, so
