@@ -1,4 +1,4 @@
-import { Router } from "oak";
+﻿import { Router } from "oak";
 import { authenticate, requireAdmin } from "../_shared/auth.ts";
 import { db } from "../_shared/db.ts";
 import { ApiError } from "../_shared/error.ts";
@@ -194,56 +194,67 @@ router.post(`${routerPrefix}/:id/messages`, authenticate, async (ctx) => {
   const user = ctx.state.user;
   if (!user) throw new ApiError("Authentication required", 401);
   const convId = ctx.params.id;
-  const body = await readJson<unknown>(ctx);
-  const validated = validate(sendMessageSchema, body);
-
-  const key = `u:${user.id}`;
-  const now = Date.now();
-  const hits = (sendBuckets.get(key) ?? []).filter((t) => now - t < SEND_WINDOW_MS);
+  // Per-user send throttle
+  const key = `u:${user.id}`
+  const now = Date.now()
+  const hits = (sendBuckets.get(key) ?? []).filter((t) => now - t < SEND_WINDOW_MS)
   if (hits.length >= SEND_MAX_PER_HOUR) {
-    ctx.response.status = 429;
-    ctx.response.body = { error: "Too many messages, please try again later." };
-    return;
+    ctx.response.status = 429
+    ctx.response.body = { error: "Too many messages, please try again later." }
+    return
   }
-  hits.push(now);
-  sendBuckets.set(key, hits);
+  hits.push(now)
+  sendBuckets.set(key, hits)
+
+  let bodyText: string | undefined
+  let imageUrl: string | undefined
+  let clientId: string | undefined
+
+  const contentType = ctx.request.headers.get("content-type") ?? ""
+  if (contentType.includes("multipart/form-data")) {
+    const form = await readFormData(ctx)
+    bodyText = strField(form, "body")
+    clientId = strField(form, "clientId")
+    const file = fileField(form, "image")
+    if (file) {
+      const uploadedUrl = await handleImage(file, user, { folderSuffix: "chat/" + convId, maxSize: CHAT_MAX_FILE_SIZE })
+      if (uploadedUrl) imageUrl = uploadedUrl
+    }
+  } else {
+    const body = await readJson<unknown>(ctx)
+    const validated = validate(sendMessageSchema, body as any)
+    bodyText = validated.body
+    imageUrl = validated.imageUrl
+    clientId = validated.clientId
+  }
+
+  if ((!bodyText || bodyText.trim().length === 0) && !imageUrl) throw new ApiError("A message must have either body text or an image", 400)
+  if (bodyText && bodyText.trim().length > 2000) throw new ApiError("Message body is too long", 400)
+  if (bodyText && bodyText.trim().length === 0) bodyText = undefined
 
   const { data: member, error: merr } = await db()
     .from("ConversationParticipant")
     .select("userId, blocked")
     .eq("conversationId", convId)
     .eq("userId", user.id)
-    .maybeSingle();
-  if (merr) throw merr;
-  if (!member) throw new ApiError("Not a participant", 403);
-  if (member.blocked) throw new ApiError("Conversation is blocked", 403);
+    .maybeSingle()
+  if (merr) throw merr
+  if (!member) throw new ApiError("Not a participant", 403)
+  if (member.blocked) throw new ApiError("Conversation is blocked", 403)
 
   try {
-    const res = await rpcCall<{ message_id: string }>("send_message", {
-      p_conversation_id: convId,
-      p_sender_id: user.id,
-      p_body: validated.body ?? null,
-      p_image_url: validated.imageUrl ?? null,
-      p_client_id: validated.clientId ?? null,
-    });
-    ctx.response.status = 201;
-    ctx.response.body = { id: res.message_id };
+    const res = await rpcCall<{ message_id: string }>("send_message", { p_conversation_id: convId, p_sender_id: user.id, p_body: bodyText ?? null, p_image_url: imageUrl ?? null, p_client_id: clientId ?? null })
+    ctx.response.status = 201
+    ctx.response.body = { id: res.message_id }
   } catch (e) {
-    if (e instanceof ApiError && e.statusCode === 409) {
-      const cid = validated.clientId;
-      if (cid) {
-        const { data: m } = await db()
-          .from("Message")
-          .select("id")
-          .eq("conversationId", convId)
-          .eq("clientId", cid)
-          .maybeSingle();
-        ctx.response.status = 200;
-        ctx.response.body = { id: m?.id };
-        return;
-      }
+    if (imageUrl) {
+      try { const pid = extractPublicIdFromUrl(imageUrl); if (pid) await deleteImage(pid) } catch (_e) {}
     }
-    throw e;
+    if (e instanceof ApiError && e.statusCode === 409 && clientId) {
+      const { data: m } = await db().from("Message").select("id").eq("conversationId", convId).eq("clientId", clientId).maybeSingle()
+      ctx.response.status = 200; ctx.response.body = { id: m?.id }; return
+    }
+    throw e
   }
 });
 
@@ -386,7 +397,7 @@ router.get("/api/admin/conversations/:id", authenticate, requireAdmin, async (ct
 });
 
 // ===== ADMIN: moderation queue =====
-router.get("/api/admin/chat/reports", authenticate, requireAdmin, async (ctx) => {
+router.get("/api/admin/chat-reports", authenticate, requireAdmin, async (ctx) => {
   const { data, error } = await db()
     .from("MessageReport")
     .select(
@@ -401,7 +412,7 @@ router.get("/api/admin/chat/reports", authenticate, requireAdmin, async (ctx) =>
 });
 
 // ===== ADMIN: resolve/dismiss =====
-router.put("/api/admin/chat/reports/:id", authenticate, requireAdmin, async (ctx) => {
+router.put("/api/admin/chat-reports/:id", authenticate, requireAdmin, async (ctx) => {
   const id = ctx.params.id;
   const body = await readJson<unknown>(ctx);
   const action = (body as any)?.action;
@@ -424,3 +435,8 @@ router.put("/api/admin/chat/reports/:id", authenticate, requireAdmin, async (ctx
 });
 
 export default router;
+
+
+
+
+
