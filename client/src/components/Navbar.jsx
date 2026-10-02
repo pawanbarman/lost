@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { Search, User, LogOut, Bell, MessageCircle, Shield } from 'lucide-react';
+import { Search, User, LogOut, Bell, MessageCircle, Shield, Menu, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api from '../utils/api';
 
