@@ -3,15 +3,20 @@ import { Link } from 'react-router-dom';
 import { MessageCircle, Clock, CheckCircle, Ban } from 'lucide-react';
 import api from '../utils/api';
 
+const POLL_MS = 20000;
+
 const Conversations = () => {
   const [conversations, setConversations] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetchConversations();
+    const timer = setInterval(fetchConversations, POLL_MS);
+    return () => clearInterval(timer);
   }, []);
 
   const fetchConversations = async () => {
+    if (document.hidden) return;
     try {
       const response = await api.get('/conversations');
       setConversations(response.data || []);
@@ -55,6 +60,7 @@ const Conversations = () => {
           <div className="bg-slate-900/50 backdrop-blur-sm border border-white/10 rounded-lg p-8 text-center">
             <MessageCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
             <p className="text-gray-400">No conversations yet</p>
+            <p className="text-gray-500 text-sm mt-2">Open a found item and use "Chat with" to start one.</p>
           </div>
         ) : (
           <div className="space-y-4">
@@ -65,9 +71,20 @@ const Conversations = () => {
                 className="block bg-slate-900/50 backdrop-blur-sm border border-white/10 rounded-lg p-6 hover:border-sky-400/40 transition-colors"
               >
                 <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="text-lg font-semibold text-white">Conversation</h3>
-                    <p className="text-gray-400 text-sm mt-1">{conv.lastMessageAt ? new Date(conv.lastMessageAt).toLocaleString() : ''}</p>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      {conv.unread && <span className="h-2 w-2 rounded-full bg-sky-400 flex-shrink-0" />}
+                      <h3 className="text-lg font-semibold text-white truncate">
+                        {conv.other?.name || 'Conversation'}
+                      </h3>
+                    </div>
+                    <p className="text-gray-400 text-sm mt-1 truncate">
+                      {conv.report?.item?.title}
+                      {conv.report?.location ? ` — ${conv.report.location}` : ''}
+                    </p>
+                    <p className="text-gray-500 text-xs mt-1">
+                      {conv.lastMessageAt ? new Date(conv.lastMessageAt).toLocaleString() : 'No messages yet'}
+                    </p>
                   </div>
                   {getStatusBadge(conv.status)}
                 </div>

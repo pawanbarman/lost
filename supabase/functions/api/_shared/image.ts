@@ -29,7 +29,7 @@ export async function handleImage(
 
   const maxSize = options?.maxSize ?? env.maxFileSize;
   if (file.size > maxSize) {
-    throw new ApiError("File too large. Maximum size is 5MB.", 400);
+    throw new ApiError(`File too large. Maximum size is ${Math.round(maxSize / 1024 / 1024)}MB.`, 400);
   }
 
   const folder = options?.folderSuffix

@@ -13,10 +13,15 @@ const Navbar = () => {
   const location = useLocation();
 
   useEffect(() => {
-    if (isAuthenticated) {
+    if (!isAuthenticated) return;
+    fetchUnreadCount();
+    fetchChatUnread();
+    const timer = setInterval(() => {
+      if (document.hidden) return;
       fetchUnreadCount();
       fetchChatUnread();
-    }
+    }, 20000);
+    return () => clearInterval(timer);
   }, [isAuthenticated]);
 
   const fetchUnreadCount = async () => {
@@ -31,7 +36,8 @@ const Navbar = () => {
   const fetchChatUnread = async () => {
     try {
       const response = await api.get('/conversations/unread-count');
-      setChatUnread(response.data.count);
+      // The endpoint returns { unread }, not { count }.
+      setChatUnread(response.data.unread ?? 0);
     } catch (error) {
       // ignore
     }

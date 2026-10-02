@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../utils/api';
-import { MapPin, Calendar, User, FileText, ArrowLeft, Edit, Trash2 } from 'lucide-react';
+import { MapPin, Calendar, User, FileText, ArrowLeft, Edit, Trash2, MessageCircle } from 'lucide-react';
 
 const ReportDetail = () => {
   const { id } = useParams();
@@ -10,6 +10,7 @@ const ReportDetail = () => {
   const navigate = useNavigate();
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [startingChat, setStartingChat] = useState(false);
 
   useEffect(() => {
     fetchReport();
@@ -33,6 +34,19 @@ const ReportDetail = () => {
       navigate('/my-reports');
     } catch (error) {
       console.error('Failed to delete report');
+    }
+  };
+
+  // The API 409s and returns the existing id, so re-entering an open thread is safe.
+  const handleStartChat = async () => {
+    setStartingChat(true);
+    try {
+      const response = await api.post('/conversations', { reportId: id });
+      navigate(`/conversations/${response.data.id}`);
+    } catch (error) {
+      alert(error.response?.data?.error || 'Could not start the conversation');
+    } finally {
+      setStartingChat(false);
     }
   };
 
@@ -67,6 +81,8 @@ const ReportDetail = () => {
 
   const isOwner = report.userId === user?.id;
   const isAdmin = user?.role === 'ADMIN';
+  // The API rejects non-FOUND reports, so don't render a button that can't work.
+  const canChat = isAuthenticated && !isOwner && report.type === 'FOUND';
 
   return (
     <div className="max-w-4xl mx-auto py-12 px-4 sm:px-6 lg:px-8">
@@ -169,6 +185,16 @@ const ReportDetail = () => {
                   <p className="text-sm text-gray-400">Reported By</p>
                   <p className="font-medium text-white">{report.user.name}</p>
                 </div>
+                {canChat && (
+                  <button
+                    onClick={handleStartChat}
+                    disabled={startingChat}
+                    className="ml-auto inline-flex items-center px-3 py-1.5 bg-sky-500/20 text-sky-300 border border-sky-400/30 rounded-lg hover:bg-sky-500/30 disabled:opacity-50 text-sm"
+                  >
+                    <MessageCircle className="h-4 w-4 mr-2" />
+                    {startingChat ? 'Opening...' : `Chat with ${report.user.name.split(' ')[0]}`}
+                  </button>
+                )}
               </div>
 
               {report.item.currentLocation && (

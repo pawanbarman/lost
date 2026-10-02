@@ -4,7 +4,7 @@ Last updated: 2026-10-02 · Repo: `P:\lost` · Branch: `master`
 
 **Two plans of record live in this file:**
 1. The 6-phase cleanup agreed 2026-09-29 — **all done and verified** (§3).
-2. The chat feature, agreed 2026-10-02 — **phases C1–C6, C1 in progress** (§4).
+2. The chat feature, agreed 2026-10-02 — **phases C1–C5 shipped, C6 open** (§4).
 
 This file is the fast-orientation doc — `README.md` is the public-facing one.
 The old `MIGRATION_COMPLETE_PLAN.md` (Render→Supabase history) and `DOCS_DEMO_CREDS.md` were deleted
@@ -139,26 +139,12 @@ trusted local relay; `SMTP_SECURE` is inferred from the port (465 → implicit T
 be set explicitly to override.
 
 ### Working tree
-Phases 0, 1, 2a are committed and pushed (`df69cbb`), plus `status.md` (`5456b5a`). Phases 2b **and 3**
-are applied/deployed to production but **not committed**:
+**Clean at `b3b7e46`**, and 6 commits ahead of `origin/master` as of 2026-10-02. Phases 0–5 and chat
+C1–C5 are all committed; the chat client fix and the §4 status block came next. `status.md` is the
+only file that lags the code, so read §4 before trusting any "in progress" claim in it.
 
-```
- M .env.example                                          (SMTP_* / MAIL_FROM / APP_URL)
- M client/src/pages/ForgotPassword.jsx                   (token UI removed)
- M prisma/schema.prisma                                  (model Location removed)
- M status.md
- M supabase/functions/api/_shared/env.ts                 (nodeEnv typo line deleted)
- M supabase/functions/api/routers/auth.ts                (503 gate; no token in response)
-?? supabase/functions/api/_shared/email.ts               (new — SMTP transport)
-?? supabase/functions/api/_shared/smtp.ts                (new — SMTP protocol client)
-?? supabase/functions/api/deno.json                      (new — REQUIRED for deploys, see table)
-?? supabase/functions/api/tests/forgotPassword.test.ts   (new)
-?? supabase/functions/api/tests/smtp.test.ts             (new)
-?? supabase/functions/api/tests/helpers/fakeSmtp.ts      (new)
-?? supabase/migrations/20260929193516_drop_location_table.sql
-```
-
-`MIGRATION_COMPLETE_PLAN.md` was deleted in Phase 5, so it no longer appears in `git status`.
+> The old block listing phases 2b + 3 as "applied but not committed" was stale — Phase 5 committed
+> them (`7c98ea1`, `48ecb86`, `df24d22`, `1331952`, `b9bc66b`) and pushed.
 
 ---
 
@@ -559,6 +545,52 @@ attaches to the **found `Report`**; the finder is always that report's owner.
 
 Each phase is independently shippable. If C5 slips you still have working chat from C4.
 
+### Status — C1–C5 shipped 2026-10-02, C6 not started
+
+| Phase | State | Commit |
+|---|---|---|
+| **C1** | ✅ schema + RLS, `MESSAGE_RECEIVED` | `3bc704d` |
+| **C2** | ✅ `routers/chat.ts` API end to end | `d38630b` |
+| **C3** | ✅ image attachments + orphan cleanup | `72dbb64`, `8188cfd` |
+| **C4** | ✅ client UI — **but see below, it shipped broken** | `16fc688` |
+| **C5** | ✅ block, report, admin queue | `b3b7e46` |
+| **C6** | ⬜ not started | — |
+
+**The backend was sound; the C4 client could not perform the feature at all.** `POST /api/conversations`
+had **zero client callers**, and the "Chat with {name}" button specced at
+`ReportDetail.jsx:159-165` was never written — so there was no way to open a thread from the
+product, and the inbox was permanently empty. All six fixed in `fix(chat): wire up the client chat
+flow`. Fixed in that pass:
+
+1. **No entry point.** No caller of `POST /api/conversations` anywhere in `client/`. Added the
+   "Chat with {first name}" button beside "Reported By", gated on `!isOwner && type === 'FOUND'`
+   because the API 400s on non-FOUND reports.
+2. **The composer was dead code.** `ConversationThread.jsx` referenced `sendMessage` and
+   `handleBlock` in JSX but **defined neither** — `onSubmit` and `onClick` threw `ReferenceError`.
+   `npm run build` passed and the page rendered perfectly; only clicking threw. Same class of bug as
+   the Phase 4 unterminated-JSX-comment incident: **a green build proves the module parses, not that
+   the handlers exist.**
+3. **Reporting without a reason always 400'd.** The prompt said reason was optional and sent
+   `undefined`, but `reportMessageSchema` is `.min(1)` and the column is `reason text not null`.
+4. **The Navbar unread badge never appeared.** It read `response.data.count`; the endpoint returns
+   `{ unread }` (`routers/chat.ts:111`). Both render paths are `chatUnread > 0`, so the value was
+   `undefined` and the badge silently never rendered.
+5. **Inbox rows were all titled "Conversation"** — the API already returns `other.name`,
+   `report.item.title` and `unread` (`routers/chat.ts:63-79`); the client discarded all of it.
+6. **No polling and no image attach.** `useChatPoll` was specced and never written; `Paperclip` was
+   imported and unused while C3's multipart endpoint sat unreachable from the UI.
+
+Fixed by polling with a bare `setInterval` + `if (document.hidden) return` inside the existing fetch
+functions (5s thread, 20s inbox) rather than the specced hook — nothing to port when realtime lands.
+
+⚠️ **`deno lint` has never been run over `routers/chat.ts`: 13 `no-explicit-any` errors.** `deno
+check` is clean. The lint command in §2 only covers `matching/` and the two ML test files, so C2
+shipped unlinted. Harmless but it will bite anyone who wires chat lint into CI.
+
+Deliberately skipped, with reasons: the **Accept** button (`send_message` never checks status, so a
+`PENDING` thread already works — accept only flips a badge); **keyset pagination / infinite scroll**
+(the client renders the newest 50, `before` exists server-side); and the C6 email-leak fix below.
+
 ### Locked decisions
 
 - **One image per message.** `Message.imageUrl` is a nullable column; no `MessageAttachment` table.
@@ -697,13 +729,15 @@ Paste this at the start of a new session:
 
 > Working on `P:\lost` (Lost & Found: React SPA + Supabase Edge Function in Deno/Oak + Postgres).
 > **Read `P:\lost\status.md` first** — it has current state, environment gotchas, and remaining phases.
-> Phases 0, 1, 2a are committed and pushed. Phases 2b and 3 are live but uncommitted.
+> Phases 0–5 and chat C1–C5 are committed; the chat client fix followed. `origin/master` may lag.
 > Do NOT use `npx prisma` — use `./node_modules/.bin/prisma`.
 > Do NOT use `prisma migrate deploy` — this repo's schema history lives in
 > `supabase_migrations.schema_migrations`, not `_prisma_migrations`. Use MCP `apply_migration`.
 > The Supabase CLI **is** installed and authed; edge secrets now work via
 > `supabase secrets set --project-ref cuhngnehtlswsdemsdpr`.
-> `api` is on **v5** with `verify_jwt: false` — do not "fix" that with `--no-verify-jwt`.
+> `api` is on **v11** with `verify_jwt: false` — do **not** "fix" that, but do pass an explicit
+> `--no-verify-jwt` on deploy, because `supabase/config.toml` has no `[functions.api]` block and the
+> CLI default can flip gateway verification to `true`, which breaks every request.
 
 Then orient with:
 
@@ -725,7 +759,7 @@ reads like an outage.
 ```bash
 cd /p/lost/supabase/functions/api
 deno test --config ../deno.json --allow-env --allow-net --ignore=tests/mlImageWiring.test.ts tests/
-# expect: ok | 18 passed (96 steps) | 0 failed
+# expect: ok | 21 passed (121 steps) | 0 failed
 # (drop --ignore to run everything; mlImageWiring.test.ts has a known timing flake)
 ```
 
