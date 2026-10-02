@@ -152,7 +152,7 @@ embed fixes, the two chat RPC migrations and this status block are all in.
 
 | Fact | Detail |
 |---|---|
-| **Supabase project ref** | `cuhngnehtlswsdemsdpr` — **verified live**, `/api/health` returns HTTP 200 |
+| **Supabase project ref** | `cuhngnehtlswsdemsdpr` — **verified live** 2026-10-02. Health is `…/functions/v1/api/health`, **not** `/api/health` (see the probe-URL row below — `/api/health` 404s for exactly that reason). |
 | **Supabase MCP server — FIXED** | It now reports `cuhngnehtlswsdemsdpr`, the correct project. (It previously reported `mfthnsnoredjcqnkuzjw`.) MCP `execute_sql`, `apply_migration`, `list_migrations`, `deploy_edge_function` all work. **Caveat: this MCP server still exposes NO secrets tool**, so edge-function secrets still need the real CLI or the dashboard. |
 | **DB server clock runs ~1 day behind** | A migration applied on "2026-09-30" local was stamped `20260929193516` by Postgres. Always trust `supabase_migrations.schema_migrations`, not your own date. |
 | **Never run `npx prisma`** | It tries to fetch `8.0.0-rc.17` and dies `ECOMPROMISED / Lock compromised`. Use `./node_modules/.bin/prisma`. |
