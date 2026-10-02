@@ -133,15 +133,19 @@ router.post(routerPrefix, authenticate, async (ctx) => {
   }
 
   try {
-    const res = await rpcCall<{ conversation_id: string }>(
+    // A RETURNS TABLE function comes back from PostgREST as an array of rows, not a bare object,
+    // so take the first row. (rpcCall's Array.isArray branch exists for the jsonb-array RPCs.)
+    const res = await rpcCall<{ conversation_id: string }[]>(
       "create_conversation",
       {
         p_report_id: validated.reportId,
         p_created_by: user.id,
       }
     );
+    const newId = res?.[0]?.conversation_id;
+    if (!newId) throw new ApiError("Could not create the conversation", 500);
     ctx.response.status = 201;
-    ctx.response.body = { id: res.conversation_id };
+    ctx.response.body = { id: newId };
   } catch (e) {
     if (e instanceof ApiError && e.statusCode === 409) {
       const { data: existing } = await db()
@@ -243,9 +247,11 @@ router.post(`${routerPrefix}/:id/messages`, authenticate, async (ctx) => {
   if (member.blocked) throw new ApiError("Conversation is blocked", 403)
 
   try {
-    const res = await rpcCall<{ message_id: string }>("send_message", { p_conversation_id: convId, p_sender_id: user.id, p_body: bodyText ?? null, p_image_url: imageUrl ?? null, p_client_id: clientId ?? null })
+    const res = await rpcCall<{ message_id: string }[]>("send_message", { p_conversation_id: convId, p_sender_id: user.id, p_body: bodyText ?? null, p_image_url: imageUrl ?? null, p_client_id: clientId ?? null })
+    const newId = res?.[0]?.message_id
+    if (!newId) throw new ApiError("Could not send the message", 500)
     ctx.response.status = 201
-    ctx.response.body = { id: res.message_id }
+    ctx.response.body = { id: newId }
   } catch (e) {
     if (imageUrl) {
       try { const pid = extractPublicIdFromUrl(imageUrl); if (pid) await deleteImage(pid) } catch (_e) {}
@@ -357,18 +363,19 @@ router.post(`${routerPrefix}/:id/messages/:messageId/report`, authenticate, asyn
     throw new ApiError("Message not found", 404);
   }
 
+  // Plain insert, not upsert(): the upsert on MessageReport_messageId_reporterId_key returned an
+  // opaque 500 that never made it into any log I could read, so this is the boring statement
+  // instead. Swallowing 23505 keeps the upsert's real intent: reporting a message twice is not an
+  // error, so both the first report and the repeat answer 201.
   const { error } = await db()
     .from("MessageReport")
-    .upsert(
-      {
-        messageId,
-        reporterId: user.id,
-        reason: validated.reason,
-        status: "OPEN",
-      },
-      { onConflict: "MessageReport_messageId_reporterId_key" }
-    );
-  if (error) throw error;
+    .insert({
+      messageId,
+      reporterId: user.id,
+      reason: validated.reason,
+      status: "OPEN",
+    });
+  if (error && error.code !== "23505") throw error;
   ctx.response.status = 201;
   ctx.response.body = { ok: true };
 });

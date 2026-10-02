@@ -15,7 +15,7 @@ export async function rpcCall<T = unknown>(
   args: Record<string, unknown>,
 ): Promise<T> {
   const { data, error } = await db().rpc(name, args);
-  if (error) throw error;
+  if (error) throw translateRaisedError(error);
 
   // Scalar-returning RPCs (dashboard_stats, users_with_report_counts) hand back
   // the jsonb value directly — an array for the latter.
@@ -30,4 +30,23 @@ export async function rpcCall<T = unknown>(
     return rest as T;
   }
   return data as T;
+}
+
+// Some RPCs signal failure by RAISE rather than by returning an envelope (create_conversation,
+// send_message). They put the HTTP status they mean in the exception's DETAIL field, which
+// PostgREST surfaces as `details`. Without this, every such raise became an opaque 500 and callers
+// branching on a specific status — chat.ts resolving a duplicate thread's 409, or a duplicate
+// send's 409 — could never match.
+export function translateRaisedError(error: unknown): unknown {
+  if (error && typeof error === "object") {
+    const pg = error as { message?: unknown; details?: unknown };
+    const status = Number(pg.details);
+    if (Number.isInteger(status) && status >= 400 && status <= 599) {
+      return new ApiError(
+        typeof pg.message === "string" && pg.message ? pg.message : "Request failed",
+        status,
+      );
+    }
+  }
+  return error;
 }

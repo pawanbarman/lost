@@ -139,9 +139,9 @@ trusted local relay; `SMTP_SECURE` is inferred from the port (465 → implicit T
 be set explicitly to override.
 
 ### Working tree
-**Clean at `b3b7e46`**, and 6 commits ahead of `origin/master` as of 2026-10-02. Phases 0–5 and chat
-C1–C5 are all committed; the chat client fix and the §4 status block came next. `status.md` is the
-only file that lags the code, so read §4 before trusting any "in progress" claim in it.
+**Clean and pushed at `91b573d`** as of 2026-10-02, following it with the chat backend fixes
+recorded in §4. Phases 0–5 and chat C1–C5 are committed; the chat client fix, the two PostgREST
+embed fixes, the two chat RPC migrations and this status block are all in.
 
 > The old block listing phases 2b + 3 as "applied but not committed" was stale — Phase 5 committed
 > them (`7c98ea1`, `48ecb86`, `df24d22`, `1331952`, `b9bc66b`) and pushed.
@@ -545,22 +545,21 @@ attaches to the **found `Report`**; the finder is always that report's owner.
 
 Each phase is independently shippable. If C5 slips you still have working chat from C4.
 
-### Status — C1–C5 shipped 2026-10-02, C6 not started
+### Status — C1–C5 shipped 2026-10-02, C6 not started, chat verified live end to end
 
 | Phase | State | Commit |
 |---|---|---|
 | **C1** | ✅ schema + RLS, `MESSAGE_RECEIVED` | `3bc704d` |
-| **C2** | ✅ `routers/chat.ts` API end to end | `d38630b` |
+| **C2** | ✅ `routers/chat.ts` API end to end — **but see below, it shipped broken** | `d38630b` |
 | **C3** | ✅ image attachments + orphan cleanup | `72dbb64`, `8188cfd` |
 | **C4** | ✅ client UI — **but see below, it shipped broken** | `16fc688` |
 | **C5** | ✅ block, report, admin queue | `b3b7e46` |
 | **C6** | ⬜ not started | — |
 
-**The backend was sound; the C4 client could not perform the feature at all.** `POST /api/conversations`
-had **zero client callers**, and the "Chat with {name}" button specced at
+**The C4 client could not perform the feature at all, and the backend turned out to be broken too.**
+`POST /api/conversations` had **zero client callers**, and the "Chat with {name}" button specced at
 `ReportDetail.jsx:159-165` was never written — so there was no way to open a thread from the
-product, and the inbox was permanently empty. All six fixed in `fix(chat): wire up the client chat
-flow`. Fixed in that pass:
+product, and the inbox was permanently empty. Fixed in `fix(chat): wire up the client chat flow`:
 
 1. **No entry point.** No caller of `POST /api/conversations` anywhere in `client/`. Added the
    "Chat with {first name}" button beside "Reported By", gated on `!isOwner && type === 'FOUND'`
@@ -586,6 +585,35 @@ functions (5s thread, 20s inbox) rather than the specced hook — nothing to por
 ⚠️ **`deno lint` has never been run over `routers/chat.ts`: 13 `no-explicit-any` errors.** `deno
 check` is clean. The lint command in §2 only covers `matching/` and the two ML test files, so C2
 shipped unlinted. Harmless but it will bite anyone who wires chat lint into CI.
+
+#### The backend was also broken, and only a live run found it
+
+Wiring the client up proved nothing, so the feature was driven end to end against the deployed
+function (20 assertions: thread creation, idempotent re-initiation, send, duplicate `clientId`,
+oversized body, inbox shape, unread count, non-participant 403, report, block). Four separate
+production bugs, all of them invisible to `deno check`, the unit tests, and a green client build:
+
+| # | Symptom | Root cause |
+|---|---|---|
+| 1 | `POST /api/conversations` **500** | `create_conversation` referenced `r.userId`; the column is `"userId"`, so PostgreSQL read it as `r.userid` → `42703`. **The function had never successfully run.** |
+| 2 | `POST .../messages` **500** | `send_message`'s notification insert omitted `"id"`, and `Notification.id` is `text not null` with **no default** (unlike the chat tables) → `23502`. **No message had ever been sent.** |
+| 3 | `GET /api/conversations` **500** | PGRST201: `Conversation` has two FKs to `User` (`createdBy`, `lastReadBy`) and the embed was ambiguous. |
+| 4 | `GET /api/admin/chat-reports` **500** | PGRST201: same ambiguity on `MessageReport` (`reporterId`, `resolvedBy`). |
+
+Bug 1 and 2 share one cause worth remembering: **both chat RPCs existed only in the live database.**
+No migration had ever created them, so nothing in the repo could exercise them and the app shipped
+with two functions that had never been executed once. They are now tracked:
+`20261002131446_chat_rpcs.sql` and `20261002131930_fix_send_message_notification_id.sql`.
+
+`MessageReport` was also written as an `upsert` on `MessageReport_messageId_reporterId_key` and 500'd
+with an error that reached neither the access log nor `postgres_logs`. It is now a plain `insert` that
+swallows `23505`, which keeps the intent (reporting the same message twice is not an error) using a
+statement that demonstrably works. **The underlying PostgREST error was never identified** — treat
+this as a workaround, not a diagnosis.
+
+⚠️ **Supabase's log backend is flaky**: `supabase_query_logs` returned `Backend error! Retry your
+query.` on several calls and came back with empty `log_attributes` on the rest. Debug live 500s here
+with a direct `supabase_execute_sql` call against the function instead — that is what found bug 2.
 
 Deliberately skipped, with reasons: the **Accept** button (`send_message` never checks status, so a
 `PENDING` thread already works — accept only flips a badge); **keyset pagination / infinite scroll**
@@ -729,7 +757,7 @@ Paste this at the start of a new session:
 
 > Working on `P:\lost` (Lost & Found: React SPA + Supabase Edge Function in Deno/Oak + Postgres).
 > **Read `P:\lost\status.md` first** — it has current state, environment gotchas, and remaining phases.
-> Phases 0–5 and chat C1–C5 are committed; the chat client fix followed. `origin/master` may lag.
+> Phases 0–5 and chat C1–C5 are committed, deployed, and verified end to end. Chat C6 is open.
 > Do NOT use `npx prisma` — use `./node_modules/.bin/prisma`.
 > Do NOT use `prisma migrate deploy` — this repo's schema history lives in
 > `supabase_migrations.schema_migrations`, not `_prisma_migrations`. Use MCP `apply_migration`.
