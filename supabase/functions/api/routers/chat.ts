@@ -38,7 +38,7 @@ router.get(routerPrefix, authenticate, async (ctx) => {
         "conversation:Conversation!inner(" +
         "id, reportId, status, lastMessageAt, createdAt, " +
         "report:Report!inner(id, type, location, item:Item(id,title,category)), " +
-        "createdBy:User!inner(id,name), " +
+        "createdBy:User!Conversation_createdBy_fkey(id,name), " +
         "other:ConversationParticipant!inner(userId, user:User(id,name))" +
         ")"
     )
@@ -402,7 +402,7 @@ router.get("/api/admin/chat-reports", authenticate, requireAdmin, async (ctx) =>
     .from("MessageReport")
     .select(
       "id, reason, status, createdAt, resolvedAt, " +
-        "reporter:User(id,name,email), " +
+        "reporter:User!MessageReport_reporterId_fkey(id,name,email), " +
         "resolvedByUser:User!MessageReport_resolvedBy_fkey(id,name), " +
         "message:Message(id,body,imageUrl,createdAt,sender:User(id,name,email),conversationId)"
     )
