@@ -6,6 +6,7 @@ import { validate } from "../_shared/validate.ts";
 import { authenticate } from "../_shared/auth.ts";
 import {
   FULL_REPORT_SELECT,
+  fullReportSelect,
   ITEM_FULL,
   MY_REPORTS_SELECT,
   ITEM_PUBLIC,
@@ -189,7 +190,9 @@ router.get("/:id", authenticate, async (ctx) => {
 
   const { data: report, error } = await db()
     .from("Report")
-    .select(FULL_REPORT_SELECT)
+    // Cast back to the literal so .select() still infers the row shape; the helper returns a
+    // widened string, which would otherwise degrade `report` to GenericStringError.
+    .select(fullReportSelect(user.role) as typeof FULL_REPORT_SELECT)
     .eq("id", ctx.params.id)
     .maybeSingle();
   if (error) throw error;

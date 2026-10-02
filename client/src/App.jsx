@@ -31,6 +31,7 @@ import ClaimSubmit from './pages/ClaimSubmit';
 import About from './pages/About';
 import Contact from './pages/Contact';
 import Privacy from './pages/Privacy';
+import Terms from './pages/Terms';
 import NotFound from './pages/NotFound';
 import Conversations from './pages/Conversations';
 import ConversationThread from './pages/ConversationThread';

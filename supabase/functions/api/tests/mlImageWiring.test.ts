@@ -413,14 +413,16 @@ describe("ML matching deadline", () => {
 
   it("stops starting new ML requests once the deadline expires", async () => {
     const report = makeReport();
-    // 6 candidates at concurrency 2, each taking 120ms, with a 250ms deadline:
-    // roughly the first wave (2) plus one more pair fit, the rest never start
+    // 6 candidates at concurrency 2, each taking 120ms, with a 200ms deadline: waves start at
+    // 0ms and 120ms, and the third wave at 240ms is past the deadline, so it never starts.
+    // The deadline must sit clear of both wave boundaries -- at 250ms it landed only 10ms after
+    // the third wave, so whether it started came down to timer jitter.
     const candidates = Array.from({ length: 6 }, (_, i) =>
       makeReport({ id: `r${i}`, userId: "u2", type: "FOUND", item: { imageUrl: `${FOUND_URL}?v=${i}` } })
     );
 
     let started = 0;
-    const { matches } = await withDeadlineEnv("250", () =>
+    const { matches } = await withDeadlineEnv("200", () =>
       rankMatches(report as never, candidates as never, {
         imageSimilarity: createMlImageSimilarityProvider(() => {
           started++;

@@ -19,6 +19,14 @@ export const REPORT_ITEM_USER = `${REPORT_COLUMNS},item:Item(${ITEM_FULL}),user:
 export const FULL_REPORT_SELECT =
   `${REPORT_COLUMNS},item:Item(${ITEM_FULL}),community:Community(*),event:Event(*),user:User(${USER_WITH_EMAIL})`;
 
+// Same report, but with the owner's email only for admins. FULL_REPORT_SELECT hands the owner's
+// email to whoever reads the report, so any route serving a report to a non-owner must use this
+// instead — the email is then never fetched, rather than fetched and stripped on the way out.
+export function fullReportSelect(viewerRole: string | undefined): string {
+  const u = isAdmin(viewerRole) ? USER_WITH_EMAIL : USER_NARROW;
+  return `${REPORT_COLUMNS},item:Item(${ITEM_FULL}),community:Community(*),event:Event(*),user:User(${u})`;
+}
+
 export const MY_REPORTS_SELECT =
   `${REPORT_COLUMNS},item:Item(${ITEM_FULL}),community:Community(*)`;
 

@@ -552,9 +552,9 @@ Each phase is independently shippable. If C5 slips you still have working chat f
 | **C1** | ✅ schema + RLS, `MESSAGE_RECEIVED` | `3bc704d` |
 | **C2** | ✅ `routers/chat.ts` API end to end — **but see below, it shipped broken** | `d38630b` |
 | **C3** | ✅ image attachments + orphan cleanup | `72dbb64`, `8188cfd` |
-| **C4** | ✅ client UI — **but see below, it shipped broken** | `16fc688` |
+| **C4** | ✅ client UI — **but see below, it shipped broken**; the "headless Chrome, 4 roles" gate was **never run** | `16fc688` |
 | **C5** | ✅ block, report, admin queue | `b3b7e46` |
-| **C6** | ⬜ not started | — |
+| **C6** | 🟡 in progress — Part 0 (Playwright MCP) + Part 1 (email leak, deployed v18) done 2026-10-02; Part 2 browser walkthrough next | — |
 
 **The C4 client could not perform the feature at all, and the backend turned out to be broken too.**
 `POST /api/conversations` had **zero client callers**, and the "Chat with {name}" button specced at
@@ -712,6 +712,119 @@ patterns and writing `AuditLog` rows. Blocked threads stay visible to admins.
 - Record the policy decision that users may exchange phone numbers and handles in message text — a
   deliberate reversal of what the claim/handover flow mediates.
 - `README.md` + this file: architecture, threat model, moderation policy, phase checklist.
+
+#### C6 execution plan (written 2026-10-02; **Part 0 and Part 1 done 2026-10-02, Part 2 next**)
+
+Scope for the next session: **Part 2 (browser walkthrough)**. Part 2 runs *after* Part 1 shipped, so it
+exercises the build that carries the leak fix.
+
+**Part 0 — Playwright. DONE.** Added to the global opencode config
+(`%USERPROFILE%\.config\opencode\opencode.jsonc`) as `npx -y @playwright/mcp@latest --browser chrome`;
+`opencode mcp list` reports it `connected`. `--browser chrome` reuses the installed Chrome, so nothing
+was downloaded and **no npm dependency went into the repo** (the user's `npm i playwright` was not
+run — that is the library alternative, not the MCP server). Config is not hot-reloaded: opencode must
+be restarted before the browser tools appear.
+
+**Part 1 — Close the email leak.** The audit is already done, so there is no further hunting:
+`USER_WITH_EMAIL` appears in exactly three places — `selectors.ts:19` (`FULL_REPORT_SELECT`),
+`admin.ts:30`, `admin.ts:235` — and both admin routes sit behind `requireAdmin`.
+`MATCH_FOUND_FEED`, `MY_REPORTS_SELECT`, `EVENT_REPORTS_SELECT` and `claimSelect(non-admin)` all use
+`USER_NARROW`, and chat's inbox projection never embedded the user at all. **The only non-admin path
+that ships another user's email is `GET /reports/:id`.**
+
+| File | Change |
+|---|---|
+| `_shared/selectors.ts` | add `fullReportSelect(viewerRole)` — `USER_WITH_EMAIL` if `isAdmin(viewerRole)` else `USER_NARROW`, mirroring `claimSelect` at `:39`. `isAdmin` is a hoisted function, so declaration order is fine. |
+| `routers/reports.ts:192` | `GET /:id` → `.select(fullReportSelect(user.role))` |
+| `routers/reports.ts:135` | leave `FULL_REPORT_SELECT` — that is the create response, i.e. your own report |
+| `tests/selectors.test.ts` | new, ~15 lines: the admin select contains `email`, the non-admin select does not |
+
+~10 lines of production code. `AdminClaims.jsx:98` and `AdminUsers.jsx:88` are the only consumers of
+another user's email and are unaffected: admins already receive reports unsanitised.
+
+**Correction to the original plan (2026-10-02):** it claimed owner-visible email is unchanged. It is
+not, and cannot be — `fullReportSelect(viewerRole)` only knows the *role*, not whether the caller owns
+the report, so an owner gets `USER_NARROW` too. Preserving the owner's copy of their own email would
+cost either an extra query to learn ownership first or fetching the email for everyone and stripping it
+(`sanitizeReportForViewer`), which is the leak itself. Dropped deliberately: no client reads
+`report.user.email` for the owner — `Profile.jsx:49` renders the email from the session profile
+instead. Grep guard: `client/src` matches `user?.email` in `AdminUsers.jsx:88` and `Profile.jsx:49`
+only.
+
+Deploy with `supabase functions deploy api --project-ref cuhngnehtlswsdemsdpr` **from the repo root**
+and **without** `--no-verify-jwt` (see the deploy-command row in §2), then confirm `ACTIVE` and
+`verify_jwt=false` via `supabase functions list`. Keep `supabase/functions/api/deno.json` in sync with
+the root one.
+
+**Part 2 — Browser walkthrough.** Runs against live `https://lost-found-client.vercel.app`, because
+`VITE_API_URL` exists only in the Vercel build (§2) and a local dev server would call nothing. The
+script lives in temp, not the repo. Auth is by seeding `localStorage.token` + `user` per context:
+registration and login were already verified live, so clicking through two signups would add steps
+without testing chat. Probe users get a distinct `c6walk-%@example.test` prefix so cleanup SQL cannot
+touch anything else.
+
+1. Finder creates a FOUND report; opener registers.
+2. Opener opens the report → **assert "Chat with" renders** (gated on `!isOwner && type === 'FOUND'`)
+   → clicks → thread page loads.
+3. Opener sends a message → **assert it renders** in the thread.
+4. Finder opens `/conversations` → **assert the navbar badge reads 1** → opens the thread → message
+   is visible.
+5. Capture console and network errors throughout — **any console error fails the walkthrough.**
+6. Screenshot each step.
+
+Two roles, not four: the admin queue and moderation were verified by API. Rate limits are not a
+constraint here — navbar/inbox polling hits the 300/15min chat-read bucket, not the 100/15min global.
+
+Cleanup afterwards: `delete from "User" where email like 'c6walk-%@example.test'`, whose cascades clear
+the chat rows, **then** delete the probe items explicitly — `Item` has no owner FK, so those do not
+cascade (this is what bit the 2026-10-02 E2E cleanup).
+
+**Part 3 — Close out.** Update this file: the C6 row, the leak fix, the walkthrough result, and the
+stale claim that C4's "headless Chrome, 4 roles" gate was satisfied. Then commit, asking first
+(standing rule 6).
+
+**Gates.** Leak: a non-owner probe of `GET /reports/:id` shows no `user.email`, admin still does, and
+the owner no longer does either (see the correction above); `deno test` and `npm run build` clean.
+Walkthrough: 6/6 assertions, zero console errors, screenshots reviewed. Deploy: `ACTIVE` with
+`verify_jwt=false` confirmed after Part 1.
+
+**Part 1 result (2026-10-02) — shipped, uncommitted.** Added `fullReportSelect` in
+`_shared/selectors.ts` and used it in `GET /reports/:id`; new `tests/selectors.test.ts` (6 cases, incl.
+unknown-role-is-not-admin). One wart: the helper returns a widened `string`, which costs
+`.select()` its literal-type inference, so the call site casts back —
+`.select(fullReportSelect(user.role) as typeof FULL_REPORT_SELECT)`. Without it `deno check` fails on
+`sanitizeReportForViewer(report as Record<string, unknown>)`.
+
+`deno test` **27 passed (164 steps) / 0 failed**; `deno check` clean; `npm run build` clean; deployed
+`ACTIVE` **v18** (was v17). Live probe, three seeded `c6probe-%@example.test` users signed in through
+`POST /auth/login` (the app mints its own HS256 JWT with a `userId` claim — Supabase Auth tokens are
+rejected with `Invalid token`, so password sign-in must go through the API, and seeded `auth.users`
+rows are pointless here; only the app `User` table and its bcrypt `passwordHash` matter):
+
+| Viewer | HTTP | `report.user` keys |
+|---|---|---|
+| `c6probe-other` (non-owner, USER) | 200 | `id,name` — no email |
+| `c6probe-owner` (owner, USER) | 200 | `id,name` — no email |
+| `c6probe-admin` (ADMIN) | 200 | `email,id,name` — `c6probe-owner@example.test` |
+
+Probe data cleaned: 3 app users, 1 report, 0 `auth.users` rows left; DB back to 6 users / 5 reports /
+5 items / 0 `example.test`. Note `Item` has no `userId` column, so probe *items* must be deleted by
+id, never by owner.
+
+**Also fixed: a latent flake in `tests/mlImageWiring.test.ts:414`.** "stops starting new ML requests
+once the deadline expires" ran a 250ms deadline against 120ms requests at concurrency 2 — waves start
+at 0/120/**240**ms, so the deadline sat 10ms *after* the third wave and `started 6/6` was the correct
+outcome, not a regression. The new `selectors.test.ts` tipped the extra concurrent file over that
+10ms knife-edge and made it fail every full run. Deadline moved to 200ms (clear of both wave
+boundaries), which makes it deterministic at `started=4` with ~40-80ms slack. Production code was
+correct and unchanged.
+
+**Rollback.** One revert commit; the leak fix is additive and touches no client file. A bad deploy
+leaves the previous function version live until a successful one replaces it.
+
+**Explicitly not in this pass.** Control-char/stored-XSS review, rate tuning, the off-platform-contact
+policy note, README architecture/threat-model docs, the Accept button, pagination, `deno lint`'s 13
+pre-existing `no-explicit-any`, and the undiagnosed `MessageReport` upsert cause.
 
 ### Risks
 
